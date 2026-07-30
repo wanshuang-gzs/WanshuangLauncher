@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wanshuang Launcher</title>
+<link rel="stylesheet" href="styles.css">
+
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+<symbol id="icon-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
+<symbol id="icon-versions" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+<symbol id="icon-game" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h.01M12 12h.01M18 12h.01"/><path d="M2 6l4-2 4 2 4-2 4 2"/></symbol>
+<symbol id="icon-resource" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+<symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+<symbol id="icon-mirror" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 2a10 10 0 0 0 10 10"/></symbol>
+<symbol id="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+<symbol id="icon-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="icon-max" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+<symbol id="icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+<symbol id="icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+<symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+<symbol id="icon-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+<symbol id="icon-delete" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="icon-log" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19h16"/><path d="M4 15h16"/><path d="M10 11h10"/><path d="M10 7h10"/><path d="M4 3h16"/></symbol>
+<symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+<symbol id="icon-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+<symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="loader-fabric" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l16 16M20 4L4 20"/><circle cx="4" cy="4" r="1.5" fill="currentColor"/><circle cx="20" cy="4" r="1.5" fill="currentColor"/><circle cx="4" cy="20" r="1.5" fill="currentColor"/><circle cx="20" cy="20" r="1.5" fill="currentColor"/></symbol>
+<symbol id="loader-quilt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h8v8H3z"/><path d="M13 3h8v8h-8z"/><path d="M3 13h8v8H3z"/><path d="M13 13h8v8h-8z"/></symbol>
+<symbol id="loader-forge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2L6 10v4h4v4h4v4h4l4-4V6l-4-4z"/><circle cx="14" cy="14" r="2"/></symbol>
+<symbol id="loader-neoforge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2L6 10v4h4v4h4v4h4l4-4V6l-4-4z"/><circle cx="14" cy="14" r="2"/><path d="M12 2v3M12 8v3"/></symbol>
+</svg>
+
+<div id="bg-wrap"><img id="bg-image" src="" alt=""><video id="bg-video" src="" autoplay loop muted playsinline></video></div>
+
+<div id="app">
+
+<header id="titlebar">
+<img id="titlebar-logo" src="" alt="W">
+<span id="titlebar-title">Wanshuang Launcher</span>
+<span id="drag-region"></span>
+<div class="titlebar-actions">
+<button class="tb-btn" onclick="window.wsl.minimize()"><svg width="14" height="14"><use href="#icon-minus"/></svg></button>
+<button class="tb-btn" onclick="window.wsl.maximize()"><svg width="14" height="14"><use href="#icon-max"/></svg></button>
+<button class="tb-btn btn-close" onclick="window.wsl.close()"><svg width="14" height="14"><use href="#icon-close"/></svg></button>
+</div>
+</header>
+
+<div id="layout">
+
+<aside id="sidebar">
+<div class="brand"><img id="sidebar-logo" src="" alt="W"></div>
+<nav>
+<button class="nav-btn active" data-page="home" onclick="switchPage('home')"><svg width="18" height="18"><use href="#icon-home"/></svg><span class="nav-label" data-i18n="home">首页</span></button>
+<button class="nav-btn" data-page="versions" onclick="switchPage('versions')"><svg width="18" height="18"><use href="#icon-versions"/></svg><span class="nav-label" data-i18n="versions">版本</span></button>
+<button class="nav-btn" data-page="game-manage" onclick="switchPage('game-manage')"><svg width="18" height="18"><use href="#icon-game"/></svg><span class="nav-label" data-i18n="gameManage">游戏管理</span></button>
+<button class="nav-btn" data-page="resources" onclick="switchPage('resources')"><svg width="18" height="18"><use href="#icon-resource"/></svg><span class="nav-label" data-i18n="resourceCenter">资源中心</span></button>
+<button class="nav-btn" data-page="settings" onclick="switchPage('settings')"><svg width="18" height="18"><use href="#icon-settings"/></svg><span class="nav-label" data-i18n="settings">设置</span></button>
+<button class="nav-btn" data-page="bot" onclick="switchPage('bot')"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="16" r="2"/><path d="M12 7V4M8 4h8M5 11V7a2 2 0 012-2h10a2 2 0 012 2v4"/></svg><span class="nav-label" data-i18n="aiBot">AI队友</span></button>
+<button class="nav-btn" data-page="mirror" onclick="switchPage('mirror')"><svg width="18" height="18"><use href="#icon-mirror"/></svg><span class="nav-label" data-i18n="mirror">镜像</span></button>
+<button class="nav-btn" data-page="multiplayer" onclick="switchPage('multiplayer')"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label" data-i18n="multiplayer">联机</span></button>
+
+</nav>
+<div class="sidebar-bottom">v3.0</div>
+</aside>
+
+<div id="content">
+
+<!-- HOME -->
+<div class="page active" id="page-home">
+<div class="page-inner">
+
+<div class="profile-bar glass">
+<div class="profile-left" onclick="openUserModal()">
+<div class="profile-avatar glass" id="avatar"><svg width="20" height="20"><use href="#icon-user"/></svg></div>
+<div>
+<div class="profile-name" id="playerName" data-i18n="unLogin">未登录</div>
+<div class="profile-badge" id="playerBadge"></div>
+</div>
+</div>
+<div class="mirror-select">
+<select id="mirrorSelect" onchange="setMirror(this.value)"></select>
+</div>
+</div>
+
+<div class="launch-block glass">
+<div class="launch-left">
+<div class="launch-label" data-i18n="selectVer">选择版本</div>
+<select class="glass" id="verSelect" onchange="onVerSel(this.value)"></select>
+<div class="ver-meta" id="verInfo"></div>
+</div>
+<div class="launch-right">
+<button class="btn-play" id="launchBtn" onclick="startLaunch()">
+<svg width="24" height="24"><use href="#icon-play"/></svg>
+<span id="launchLabel" data-i18n="launch">启动</span>
+<div class="play-progress" id="launchProgress"></div>
+</button>
+</div>
+</div>
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-log"/></svg> <span data-i18n="log">日志</span> <button class="btn" onclick="clearLog()" style="margin-left:auto"><svg width="11" height="11"><use href="#icon-delete"/></svg> <span data-i18n="clear">清除</span></button></div>
+<div class="card-body"><div class="log-box" id="logBox"></div></div>
+</div>
+
+</div>
+</div>
+
+<!-- VERSIONS -->
+<div class="page" id="page-versions">
+<div class="page-inner">
+<div class="section-head"><h2 data-i18n="versions">版本列表</h2><button class="btn" onclick="loadVersions()"><svg width="12" height="12"><use href="#icon-refresh"/></svg> <span data-i18n="refresh">刷新</span></button></div>
+<div class="ver-grid" id="versionGrid"><p class="empty-text" data-i18n="noVersions">暂无版本</p></div>
+</div>
+</div>
+
+<!-- VERSION DETAIL (sub-page of versions) -->
+<div class="page" id="page-verdetail">
+<div class="page-inner">
+<button class="btn" onclick="showVersionList()" style="width:fit-content"><svg width="12" height="12"><use href="#icon-back"/></svg> <span data-i18n="back">返回</span></button>
+<div class="ver-detail glass" id="verDetailContent"></div>
+</div>
+</div>
+
+<!-- GAME MANAGEMENT -->
+<div class="page" id="page-game-manage">
+<div class="page-inner">
+<div class="section-head"><h2 data-i18n="gameManage">游戏管理</h2></div>
+<div class="game-manage-grid">
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-versions"/></svg> <span data-i18n="downloadedVersions">已下载版本</span></div>
+<div class="card-body" id="localVerList"><p class="empty-text" data-i18n="noDownloaded">暂无已下载的版本</p></div>
+</div>
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-resource"/></svg> <span data-i18n="modManage">模组管理</span> <button class="btn" onclick="window.wsl.openDir(minecraftDir + '/mods')" style="margin-left:auto"><svg width="11" height="11"><use href="#icon-folder"/></svg> <span data-i18n="openFolder">打开文件夹</span></button> <button class="btn" onclick="loadMods()"><svg width="11" height="11"><use href="#icon-refresh"/></svg> <span data-i18n="refresh">刷新</span></button></div>
+<div class="card-body">
+<input class="input glass" id="modSearch" placeholder="" oninput="filterMods()" style="max-width:200px;margin-bottom:8px">
+<div class="mods-grid" id="modsGrid" style="max-height:300px;overflow-y:auto"><p class="empty-text" data-i18n="modNone">暂无模组</p></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- RESOURCES -->
+<div class="page" id="page-resources">
+<div class="page-inner">
+<div class="res-toolbar">
+<div class="res-tabs" id="resTabs">
+<button class="res-tab active" data-type="all" onclick="switchResTab(this)"><span data-i18n="all">全部</span></button>
+<button class="res-tab" data-type="modpack" onclick="switchResTab(this)"><span data-i18n="modpack">整合包</span></button>
+<button class="res-tab" data-type="mod" onclick="switchResTab(this)"><span data-i18n="mod">模组</span></button>
+<button class="res-tab" data-type="shader" onclick="switchResTab(this)"><span data-i18n="shader">光影</span></button>
+<button class="res-tab" data-type="resourcepack" onclick="switchResTab(this)"><span data-i18n="resourcepack">资源包</span></button>
+<button class="res-tab" data-type="world" onclick="switchResTab(this)"><span data-i18n="world">世界</span></button>
+</div>
+<input class="input glass" id="resSearch" placeholder="" oninput="debounceSearch()" style="max-width:200px">
+<button class="btn" id="resSourceBtn" onclick="switchResSource()" style="min-width:80px">Modrinth</button>
+<button class="btn" onclick="refreshResources()"><svg width="12" height="12"><use href="#icon-refresh"/></svg> <span data-i18n="refresh">刷新</span></button>
+</div>
+<div class="res-grid" id="resGrid"><p class="empty-text" data-i18n="searchHint">输入关键词搜索资源</p></div>
+</div>
+</div>
+
+<!-- RESOURCE DETAIL (sub-page) -->
+<div class="page" id="page-resdetail">
+<div class="page-inner">
+<button class="btn" onclick="showResourceList()" style="width:fit-content"><svg width="12" height="12"><use href="#icon-back"/></svg> <span data-i18n="back">返回</span></button>
+<div class="ver-detail glass" id="resDetailContent"></div>
+</div>
+</div>
+
+<!-- SETTINGS -->
+<div class="page" id="page-settings">
+<div class="page-inner">
+<div class="section-head"><h2 data-i18n="settings">设置</h2></div>
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-settings"/></svg> <span data-i18n="javaSettings">Java 设置</span></div>
+<div class="card-body">
+<div class="field-row">
+<input class="input glass" id="javaPath" placeholder="" readonly>
+<button class="btn btn-sm" onclick="browseJava()"><svg width="12" height="12"><use href="#icon-folder"/></svg></button>
+<button class="btn btn-sm" onclick="detectJava()"><svg width="12" height="12"><use href="#icon-search"/></svg></button>
+</div>
+<div class="field-row">
+<input class="input glass" id="username" placeholder="" style="flex:1">
+<input class="input glass" id="jvmArgs" placeholder="" style="flex:2">
+</div>
+<div class="mem-row">
+<div class="mem-field"><span class="label" data-i18n="minMem">最小</span><input type="range" class="slider" id="minRam" min="512" max="8192" step="128"><span class="mem-val" id="minRamVal"></span></div>
+<div class="mem-field"><span class="label" data-i18n="maxMem">最大</span><input type="range" class="slider" id="maxRam" min="512" max="16384" step="128"><span class="mem-val" id="maxRamVal"></span></div>
+</div>
+<div class="field-row" style="margin-top:8px">
+<span class="label" style="font-size:12px;color:var(--text3);flex-shrink:0">分辨率</span>
+<input class="input glass" id="resWidth" placeholder="854" style="flex:1;text-align:center" oninput="this.value=this.value.replace(/\D/g,'')">
+<span style="color:var(--text3);padding:0 4px">×</span>
+<input class="input glass" id="resHeight" placeholder="480" style="flex:1;text-align:center" oninput="this.value=this.value.replace(/\D/g,'')">
+</div>
+</div>
+</div>
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-settings"/></svg> <span data-i18n="theme">主题</span></div>
+<div class="card-body">
+<div class="theme-options">
+<button class="theme-btn active" data-theme="default" onclick="setTheme('default')"><span data-i18n="theme0">深空紫</span></button>
+<button class="theme-btn" data-theme="steam" onclick="setTheme('steam')"><span data-i18n="theme1">蒸汽蓝</span></button>
+<button class="theme-btn" data-theme="night" onclick="setTheme('night')"><span data-i18n="theme2">暗夜紫</span></button>
+<button class="theme-btn" data-theme="light" onclick="setTheme('light')"><span data-i18n="theme3">简约白</span></button>
+<button class="theme-btn" data-theme="liquid" onclick="setTheme('liquid')"><span data-i18n="theme4">液态玻璃</span></button>
+<button class="theme-btn" data-theme="frosted" onclick="setTheme('frosted')"><span data-i18n="theme5">毛玻璃</span></button>
+</div>
+<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+<button class="btn" onclick="importBgImage()"><svg width="12" height="12"><use href="#icon-plus"/></svg> <span data-i18n="importBg">导入背景</span></button>
+<button class="btn" onclick="clearBg()" id="clearBgBtn" style="display:none"><span data-i18n="clearBg">清除背景</span></button>
+</div>
+</div>
+</div>
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-globe"/></svg> <span data-i18n="lang">语言</span></div>
+<div class="card-body">
+<select class="combo" id="langSelect" onchange="setLang(this.value)" style="width:100%">
+<option value="zh">中文</option><option value="en">English</option>
+</select>
+</div>
+</div>
+
+<div class="card glass">
+<div class="card-header"><span data-i18n="about">关于</span></div>
+<div class="card-body">
+<p class="about-text">Wanshuang Launcher v3.0</p>
+<button class="btn" style="margin-top:8px" onclick="clearAccountCache()">清除账号缓存</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- MIRROR -->
+<div class="page" id="page-mirror">
+<div class="page-inner">
+<div class="section-head"><h2 data-i18n="downloadSrc">下载源</h2><button class="btn" onclick="speedTest()"><svg width="12" height="12"><use href="#icon-refresh"/></svg> <span data-i18n="speedTest">测速</span></button></div>
+<div class="mirror-group" id="mirrorList"></div>
+</div>
+</div>
+
+<!-- MULTIPLAYER / 联机 -->
+<div class="page" id="page-multiplayer">
+<div class="page-inner">
+<div class="section-head"><h2 data-i18n="multiplayer">联机</h2></div>
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> <span>陶瓦联机</span></div>
+<div class="card-body">
+<p style="font-size:13px;color:var(--text2);line-height:1.6">内置陶瓦联机（Terracotta），无需公网 IP 即可与好友联机，兼容 HMCL 联机码。</p>
+<div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+<button class="btn btn-primary" onclick="etHost()" id="etHostBtn"><svg width="14" height="14"><use href="#icon-play"/></svg> 创建房间</button>
+<button class="btn" onclick="etShowJoin()" id="etJoinBtn"><svg width="14" height="14"><use href="#icon-plus"/></svg> 加入房间</button>
+<button class="btn btn-danger" onclick="etStop()" id="etStopBtn" style="display:none"><svg width="14" height="14"><use href="#icon-close"/></svg> 断开</button>
+<span id="etStatusDot" style="width:8px;height:8px;border-radius:50%;background:var(--text3);display:inline-block"></span>
+</div>
+</div>
+</div>
+
+<!-- Idle -->
+<div id="etIdle" class="card glass">
+<div class="card-body" style="display:flex;gap:16px;flex-wrap:wrap">
+<div class="glass" style="flex:1;min-width:180px;padding:24px 16px;text-align:center;cursor:pointer;border:1px solid var(--glass-border);border-radius:var(--radius);transition:var(--transition);background:var(--glass-bg)" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--glass-border)'" onclick="etHost()">
+<div style="font-size:28px;margin-bottom:6px">🏠</div>
+<div style="font-weight:600;font-size:14px;color:var(--text)">创建房间</div>
+<div style="font-size:11px;color:var(--text3);margin-top:4px">成为房主，生成房间码</div>
+</div>
+<div class="glass" style="flex:1;min-width:180px;padding:24px 16px;text-align:center;cursor:pointer;border:1px solid var(--glass-border);border-radius:var(--radius);transition:var(--transition);background:var(--glass-bg)" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--glass-border)'" onclick="etShowJoin()">
+<div style="font-size:28px;margin-bottom:6px">🚪</div>
+<div style="font-weight:600;font-size:14px;color:var(--text)">加入房间</div>
+<div style="font-size:11px;color:var(--text3);margin-top:4px">输入房间码加入好友</div>
+</div>
+</div>
+</div>
+
+<!-- Guest input -->
+<div id="etGuestInput" class="card glass" style="display:none">
+<div class="card-body">
+<div style="font-weight:600;font-size:14px;color:var(--text);margin-bottom:8px">加入房间</div>
+<div class="field-row" style="gap:8px;flex-wrap:wrap">
+<input class="input glass" id="etRoomInput" placeholder="输入房间码，如 U/A3F7-K2M9-R5B8-X1P3" style="flex:1;min-width:180px;font-family:monospace" onkeydown="if(event.key==='Enter')etJoin()">
+<button class="btn btn-primary" onclick="etJoin()">加入</button>
+<button class="btn" onclick="etPaste()">📋 粘贴</button>
+<button class="btn" onclick="setEtView('etIdle')">返回</button>
+</div>
+<div style="font-size:11px;color:var(--text3);margin-top:8px">格式：U/XXXX-XXXX-XXXX-XXXX（陶瓦联机 / 本启动器通用）</div>
+</div>
+</div>
+
+<!-- Loading -->
+<div id="etLoading" class="card glass" style="display:none">
+<div class="card-body" style="text-align:center;padding:24px">
+<div class="spinner" style="margin:0 auto 12px"></div>
+<div id="etLoadingMsg" style="font-size:14px;color:var(--text2)">处理中...</div>
+</div>
+</div>
+
+<!-- Host view -->
+<div id="etHost" class="card glass" style="display:none">
+<div class="card-body" style="text-align:center;padding:20px">
+<div style="font-size:13px;color:var(--text2);margin-bottom:10px">房间已创建，将房间码发送给好友：</div>
+<div style="font-size:22px;font-weight:800;letter-spacing:2px;color:var(--accent);background:var(--bg-alt);padding:8px 14px;border-radius:var(--radius);display:inline-block;font-family:monospace;word-break:break-all;max-width:100%" id="etRoomCodeDisplay">------</div>
+<div style="margin:14px 0">
+<img id="etQRImg" style="width:180px;height:180px;border-radius:8px;background:white;padding:8px;display:none">
+</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:10px" id="etCliHint"></div>
+<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+<button class="btn btn-primary" onclick="etCopyCode()">📋 复制房间码</button>
+<button class="btn" onclick="etStop()">关闭房间</button>
+</div>
+</div>
+</div>
+
+<!-- Guest view -->
+<div id="etGuest" class="card glass" style="display:none">
+<div class="card-body" style="text-align:center;padding:24px">
+<div style="font-size:36px;margin-bottom:8px">🎉</div>
+<div style="font-size:14px;color:var(--text2)">已加入房间！启动游戏即可联机游玩。</div>
+<button class="btn" style="margin-top:12px" onclick="etStop()">断开连接</button>
+</div>
+</div>
+
+<!-- Error view -->
+<div id="etError" class="card glass" style="display:none">
+<div class="card-body" style="text-align:center;padding:24px">
+<div style="font-size:14px;color:var(--danger);margin-bottom:8px" id="etErrorMsg">发生错误</div>
+<button class="btn" onclick="setEtView('etIdle')">返回</button>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- AI BOT -->
+<div class="page" id="page-bot">
+<div class="page-inner">
+
+<div class="section-head"><h2 data-i18n="aiBot">AI队友</h2></div>
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-settings"/></svg> <span data-i18n="botConnect">连接设置</span></div>
+<div class="card-body">
+<div class="field-row" style="gap:8px;flex-wrap:wrap">
+  <input class="input glass" id="botHost" value="localhost" placeholder="服务器地址" style="flex:2">
+  <input class="input glass" id="botPort" value="25565" placeholder="端口" style="flex:0 0 80px">
+</div>
+<div class="field-row" style="gap:8px;flex-wrap:wrap">
+  <input class="input glass" id="botName" value="AI_Teammate" placeholder="机器人名字" style="flex:1">
+  <select class="combo" id="botAuth" style="width:auto">
+    <option value="offline">离线模式</option>
+    <option value="microsoft">微软正版</option>
+  </select>
+</div>
+<div class="field-row" style="gap:8px">
+  <button class="btn btn-sm btn-primary" onclick="botConnect()" id="botConnectBtn"><svg width="12" height="12"><use href="#icon-play"/></svg> <span data-i18n="botBtnConnect">连接</span></button>
+  <button class="btn btn-sm" onclick="botDisconnect()" id="botDisconnectBtn" style="display:none"><svg width="12" height="12"><use href="#icon-close"/></svg> <span data-i18n="botBtnDisconnect">断开</span></button>
+  <span id="botStatusLabel" style="font-size:12px;color:var(--text3);padding:6px 12px">未连接</span>
+</div>
+</div>
+</div>
+
+<div class="card glass" id="botHudCard" style="display:none">
+<div class="card-header">
+  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  <span>状态</span>
+  <span id="botModeLabel" style="margin-left:auto;font-size:12px;color:var(--text3)">空闲</span>
+</div>
+<div class="card-body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+  <div style="display:flex;gap:4px;align-items:center"><span style="color:var(--danger)">❤</span><span id="botHudHealth">20</span><span style="color:var(--text3);font-size:11px">/20</span></div>
+  <div style="display:flex;gap:4px;align-items:center"><span style="color:var(--warning)">🍖</span><span id="botHudFood">20</span><span style="color:var(--text3);font-size:11px">/20</span></div>
+  <div style="display:flex;gap:4px;align-items:center;color:var(--text3);font-size:12px"><span>📍</span><span id="botHudPos">0,0,0</span></div>
+  <div style="display:flex;gap:4px;align-items:center;color:var(--text3);font-size:12px"><span>🔧</span><span id="botHudHand">空手</span></div>
+  <div style="display:flex;gap:4px;align-items:center;color:var(--text3);font-size:12px"><span>🎯</span><span id="botHudTarget">无目标</span></div>
+</div>
+<div class="card-body" id="botProgressWrap" style="display:none;padding-top:0">
+  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:2px">
+    <span id="botProgressLabel">进度</span>
+    <span id="botProgressCount">0/0</span>
+  </div>
+  <div style="height:6px;background:var(--bg-alt);border-radius:3px;overflow:hidden">
+    <div id="botProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--primary),var(--accent));border-radius:3px;transition:width .3s"></div>
+  </div>
+</div>
+</div>
+
+
+
+<div class="card glass" id="botPersonalityCard">
+<div class="card-header"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM4 22v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg> <span>性格设定</span></div>
+<div class="card-body">
+<div class="field-row" style="gap:6px;flex-wrap:wrap">
+  <button class="btn btn-sm btn-primary" id="persona-default" onclick="setPersonality('default')">默认</button>
+  <button class="btn btn-sm" id="persona-friendly" onclick="setPersonality('friendly')">热情</button>
+  <button class="btn btn-sm" id="persona-cool" onclick="setPersonality('cool')">高冷</button>
+  <button class="btn btn-sm" id="persona-humorous" onclick="setPersonality('humorous')">幽默</button>
+</div>
+</div>
+</div>
+
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14"><use href="#icon-settings"/></svg> <span>AI 提供商</span></div>
+<div class="card-body">
+<div id="apiProviderList"></div>
+<button class="btn btn-sm" onclick="apiAddProvider()" style="margin-top:4px">+ 添加节点</button>
+<div class="field-row" style="gap:8px;margin-top:8px">
+  <button class="btn btn-primary btn-sm" onclick="apiSaveConfig()">保存配置</button>
+  <button class="btn btn-sm" onclick="apiTestActive()" id="apiTestBtn">测试连通性</button>
+  <span id="apiTestResult" style="font-size:12px;color:var(--text3)"></span>
+</div>
+</div>
+</div>
+
+
+<div class="card glass">
+<div class="card-header"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> <span>AI 对话与控制</span> <button class="btn btn-sm" onclick="aiChatClear()" style="margin-left:auto"><svg width="11" height="11"><use href="#icon-delete"/></svg> 清空</button></div>
+<div class="card-body" id="aiChatMessages" style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:180px;max-height:260px">
+<div class="empty-text" style="padding:30px 0;text-align:center;color:var(--text3)">连接 AI 后可在此对话控制机器人</div>
+</div>
+<div class="card-body" style="border-top:1px solid var(--glass-border);padding:8px 12px">
+<div class="field-row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+  <button class="btn btn-sm" onclick="botExec('FOLLOW')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg> 跟随</button>
+  <button class="btn btn-sm" onclick="botExec('STOP')">停止</button>
+  <button class="btn btn-sm" onclick="botExec('COME')">过来</button>
+  <button class="btn btn-sm" onclick="botMine()">挖矿</button>
+  <button class="btn btn-sm" onclick="botExec('ATTACK')">战斗</button>
+  <button class="btn btn-sm" onclick="botExec('COLLECT')">拾取</button>
+  <button class="btn btn-sm" onclick="botExec('DEFEND')">🛡 防御</button>
+  <button class="btn btn-sm" onclick="botExec('DEPOSIT_CHEST')">📦 存箱</button>
+  <button class="btn btn-sm" onclick="botExec('INVENTORY_CHECK')">🎒 背包</button>
+  <button class="btn btn-sm" onclick="botExec('SUMMON')">召唤</button>
+  <button class="btn btn-sm" onclick="botExec('DISMISS')">解散</button>
+</div>
+<div class="field-row" style="gap:6px">
+  <input class="input glass" id="botInput" placeholder="输入消息，按 Enter 发送给 AI..." style="flex:1" onkeydown="if(event.key==='Enter')aiChatSend()">
+  <button class="btn btn-primary btn-sm" id="botChatSendBtn" onclick="aiChatSend()">发送</button>
+</div>
+<div class="bot-log" id="botLog" style="height:140px;overflow-y:auto;padding:8px 10px;font-size:12px;background:var(--bg-alt);border-radius:var(--radius);border:1px solid var(--glass-border);margin-top:8px">
+<p class="empty-text" style="padding:20px 0" data-i18n="botEmpty">连接机器人后操作日志将显示在此</p>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- User Modal -->
+<div class="modal" id="userModal">
+<div class="modal-box glass">
+<div class="modal-head"><h3 data-i18n="accountManage">账号管理</h3><button class="btn btn-icon" onclick="closeUserModal()"><svg width="14" height="14"><use href="#icon-close"/></svg></button></div>
+<div class="modal-body" id="userModalBody">
+<div id="userList"></div>
+<div class="field-row" style="margin-top:8px">
+<button class="btn btn-primary" onclick="doMsLogin()"><svg width="12" height="12"><use href="#icon-user"/></svg> <span data-i18n="msLogin">微软登录</span></button>
+<button class="btn" onclick="openOfflineModal()"><svg width="12" height="12"><use href="#icon-plus"/></svg> <span data-i18n="addOffline">添加离线</span></button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Offline Modal -->
+<div class="modal" id="offlineModal">
+<div class="modal-box glass">
+<div class="modal-head"><h3 data-i18n="offlineTitle">离线账号</h3><button class="btn btn-icon" onclick="closeOfflineModal()"><svg width="14" height="14"><use href="#icon-close"/></svg></button></div>
+<div class="modal-body">
+<input class="input glass" id="offlineName" placeholder="" autofocus>
+<p class="hint" data-i18n="offlineHint">离线模式仅用于单人游戏或局域网</p>
+</div>
+<div class="modal-foot">
+<button class="btn" onclick="closeOfflineModal()"><span data-i18n="cancel">取消</span></button>
+<button class="btn btn-primary" onclick="confirmOffline()"><span data-i18n="create">创建</span></button>
+</div>
+</div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal" id="confirmModal">
+<div class="modal-box glass">
+<div class="modal-head"><h3 id="confirmTitle">确认</h3><button class="btn btn-icon" onclick="closeConfirmModal()"><svg width="14" height="14"><use href="#icon-close"/></svg></button></div>
+<div class="modal-body"><p id="confirmMsg"></p></div>
+<div class="modal-foot">
+<button class="btn" onclick="closeConfirmModal()"><span data-i18n="cancel">取消</span></button>
+<button class="btn btn-primary" id="confirmOkBtn"><span data-i18n="ok">确定</span></button>
+</div>
+</div>
+</div>
+
+<!-- Java Download Modal -->
+<div class="modal" id="javaDlModal">
+<div class="modal-box glass" style="width:500px">
+<div class="modal-head"><h3 id="javaDlTitle" data-i18n="javaDlTitle">未检测到 Java 运行环境</h3></div>
+<div class="modal-body">
+<p id="javaDlMsg" data-i18n="javaDlMsg">运行我的世界需要 Java，是否自动下载配套 Java 环境？</p>
+<div id="javaDlProgress" style="display:none;margin-top:12px">
+<div class="dlw-item downloading"><div class="dlw-name" id="javaDlFilename">下载中...</div><div class="dlw-bar"><div class="dlw-fill" id="javaDlBar" style="width:0%"></div></div><div class="dlw-status" id="javaDlSpeed"></div></div>
+</div>
+</div>
+<div class="modal-foot" id="javaDlFoot">
+<button class="btn btn-primary" id="javaDlAutoBtn" onclick="startJavaDownload()"><span data-i18n="javaDlAuto">自动下载 Java</span></button>
+<button class="btn" id="javaDlBrowseBtn" onclick="browseJavaForDl()"><span data-i18n="javaDlBrowse">手动选择 javaw.exe</span></button>
+<button class="btn" id="javaDlLaterBtn" onclick="closeJavaDlModal()"><span data-i18n="javaDlLater">稍后再说</span></button>
+<button class="btn btn-primary" id="javaDlRetryBtn" onclick="startJavaDownload()" style="display:none"><span data-i18n="javaDlRetry">重试</span></button>
+</div>
+</div>
+</div>
+
+<!-- Download floating widget -->
+<div class="glass" id="dlWidget">
+<div class="dlw-head" onclick="toggleDlWidget()">
+<span class="dlw-title" data-i18n="downloads">下载</span>
+<span class="dlw-badge" id="dlBadge">0</span>
+<button class="btn btn-icon" style="width:24px;height:24px" onclick="event.stopPropagation();hideDlWidget()"><svg width="12" height="12"><use href="#icon-close"/></svg></button>
+</div>
+<div class="dlw-body" id="dlwBody"></div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Image Lightbox -->
+<div class="lightbox" id="imageLightbox">
+  <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+  <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+  <button class="lightbox-nav lightbox-prev" onclick="prevImage()">&lsaquo;</button>
+  <button class="lightbox-nav lightbox-next" onclick="nextImage()">&rsaquo;</button>
+  <div class="lightbox-counter" id="lightboxCounter"></div>
+  <img class="lightbox-img" id="lightboxImg" src="" alt="">
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

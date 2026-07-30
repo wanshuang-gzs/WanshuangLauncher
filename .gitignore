@@ -1,0 +1,10 @@
+node_modules/
+dist/
+patched-deps/
+splash-ui/
+splash/
+src-tauri/
+play.js
+.DS_Store
+/terracotta.exe
+easytier-bin/
