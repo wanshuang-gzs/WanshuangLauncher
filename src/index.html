@@ -59,13 +59,14 @@
 <button class="nav-btn" data-page="versions" onclick="switchPage('versions')"><svg width="18" height="18"><use href="#icon-versions"/></svg><span class="nav-label" data-i18n="versions">版本</span></button>
 <button class="nav-btn" data-page="game-manage" onclick="switchPage('game-manage')"><svg width="18" height="18"><use href="#icon-game"/></svg><span class="nav-label" data-i18n="gameManage">游戏管理</span></button>
 <button class="nav-btn" data-page="resources" onclick="switchPage('resources')"><svg width="18" height="18"><use href="#icon-resource"/></svg><span class="nav-label" data-i18n="resourceCenter">资源中心</span></button>
+<button class="nav-btn" data-page="skins" onclick="switchPage('skins')"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-4 12.7V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.3A7 7 0 0 0 12 2z"/><path d="M9 22h6"/><path d="M9 10h.01M15 10h.01"/></svg><span class="nav-label" data-i18n="skins">皮肤库</span></button>
 <button class="nav-btn" data-page="settings" onclick="switchPage('settings')"><svg width="18" height="18"><use href="#icon-settings"/></svg><span class="nav-label" data-i18n="settings">设置</span></button>
 <button class="nav-btn" data-page="bot" onclick="switchPage('bot')"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="16" r="2"/><path d="M12 7V4M8 4h8M5 11V7a2 2 0 012-2h10a2 2 0 012 2v4"/></svg><span class="nav-label" data-i18n="aiBot">AI队友</span></button>
 <button class="nav-btn" data-page="mirror" onclick="switchPage('mirror')"><svg width="18" height="18"><use href="#icon-mirror"/></svg><span class="nav-label" data-i18n="mirror">镜像</span></button>
 <button class="nav-btn" data-page="multiplayer" onclick="switchPage('multiplayer')"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label" data-i18n="multiplayer">联机</span></button>
 
 </nav>
-<div class="sidebar-bottom">v3.0</div>
+<div class="sidebar-bottom">v1.2.0</div>
 </aside>
 
 <div id="content">
@@ -136,7 +137,7 @@
 <div class="card-body" id="localVerList"><p class="empty-text" data-i18n="noDownloaded">暂无已下载的版本</p></div>
 </div>
 <div class="card glass">
-<div class="card-header"><svg width="14" height="14"><use href="#icon-resource"/></svg> <span data-i18n="modManage">模组管理</span> <button class="btn" onclick="window.wsl.openDir(minecraftDir + '/mods')" style="margin-left:auto"><svg width="11" height="11"><use href="#icon-folder"/></svg> <span data-i18n="openFolder">打开文件夹</span></button> <button class="btn" onclick="loadMods()"><svg width="11" height="11"><use href="#icon-refresh"/></svg> <span data-i18n="refresh">刷新</span></button></div>
+<div class="card-header"><svg width="14" height="14"><use href="#icon-resource"/></svg> <span data-i18n="modManage">模组管理</span> <button class="btn" onclick="preinstallMods()" style="margin-left:auto"><svg width="11" height="11"><use href="#icon-download"/></svg> <span data-i18n="preinstallMods">预装皮肤模组</span></button> <button class="btn" onclick="window.wsl.openDir(minecraftDir + '/mods')"><svg width="11" height="11"><use href="#icon-folder"/></svg> <span data-i18n="openFolder">打开文件夹</span></button> <button class="btn" onclick="loadMods()"><svg width="11" height="11"><use href="#icon-refresh"/></svg> <span data-i18n="refresh">刷新</span></button></div>
 <div class="card-body">
 <input class="input glass" id="modSearch" placeholder="" oninput="filterMods()" style="max-width:200px;margin-bottom:8px">
 <div class="mods-grid" id="modsGrid" style="max-height:300px;overflow-y:auto"><p class="empty-text" data-i18n="modNone">暂无模组</p></div>
@@ -160,9 +161,31 @@
 </div>
 <input class="input glass" id="resSearch" placeholder="" oninput="debounceSearch()" style="max-width:200px">
 <button class="btn" id="resSourceBtn" onclick="switchResSource()" style="min-width:80px">Modrinth</button>
+<button class="btn" onclick="importModpack()"><svg width="12" height="12"><use href="#icon-download"/></svg> <span data-i18n="importPack">导入整合包</span></button>
 <button class="btn" onclick="refreshResources()"><svg width="12" height="12"><use href="#icon-refresh"/></svg> <span data-i18n="refresh">刷新</span></button>
 </div>
+<div id="importStatus" class="glass" style="display:none;align-items:center;gap:10px;padding:10px 14px;margin-bottom:10px">
+<span id="importStatusText" style="font-size:12px;color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+<div style="flex:1;height:4px;background:var(--glass-border);border-radius:2px;overflow:hidden"><div id="importBar" style="height:100%;width:0;background:var(--accent);transition:width .2s"></div></div>
+<span id="importPct" style="font-size:11px;color:var(--text3)">0%</span>
+</div>
 <div class="res-grid" id="resGrid"><p class="empty-text" data-i18n="searchHint">输入关键词搜索资源</p></div>
+</div>
+</div>
+
+<!-- SKIN LIBRARY -->
+<div class="page" id="page-skins">
+<div class="page-inner">
+<div class="section-head">
+<h2 data-i18n="skins">皮肤库</h2>
+<div style="display:flex;gap:8px">
+<button class="btn" onclick="importLocalSkin()"><svg width="12" height="12"><use href="#icon-plus"/></svg> <span data-i18n="importSkin">导入皮肤</span></button>
+<button class="btn" onclick="loadSkins(true)"><svg width="12" height="12"><use href="#icon-refresh"/></svg> <span data-i18n="refresh">刷新</span></button>
+</div>
+</div>
+<p id="skinHint" style="font-size:12px;color:var(--text3);margin:0 0 12px"></p>
+<div id="skinGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px"><p class="empty-text" data-i18n="skinLoading">正在加载皮肤...</p></div>
+<div id="skinStatus" class="empty-text" style="display:none;padding:14px 0"></div>
 </div>
 </div>
 
@@ -186,6 +209,7 @@
 <input class="input glass" id="javaPath" placeholder="" readonly>
 <button class="btn btn-sm" onclick="browseJava()"><svg width="12" height="12"><use href="#icon-folder"/></svg></button>
 <button class="btn btn-sm" onclick="detectJava()"><svg width="12" height="12"><use href="#icon-search"/></svg></button>
+<button class="btn btn-sm" onclick="openJavaDlModal()" title="自动下载 Java"><svg width="12" height="12"><use href="#icon-download"/></svg></button>
 </div>
 <div class="field-row">
 <input class="input glass" id="username" placeholder="" style="flex:1">
@@ -234,8 +258,13 @@
 <div class="card glass">
 <div class="card-header"><span data-i18n="about">关于</span></div>
 <div class="card-body">
-<p class="about-text">Wanshuang Launcher v3.0</p>
-<button class="btn" style="margin-top:8px" onclick="clearAccountCache()">清除账号缓存</button>
+<p class="about-text">Wanshuang Launcher <span id="appVersionText">v1.2.0</span></p>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+<button class="btn" onclick="checkForUpdates(true)"><svg width="12" height="12"><use href="#icon-refresh"/></svg> <span data-i18n="checkUpdate">检查更新</span></button>
+<button class="btn" onclick="openChannelModal()"><svg width="12" height="12"><use href="#icon-user"/></svg> <span data-i18n="joinChannel">加入频道</span></button>
+<button class="btn" onclick="window.wsl.openUrl('https://github.com/wanshuang-gzs/WanshuangLauncher')"><svg width="12" height="12"><use href="#icon-folder"/></svg> <span>GitHub</span></button>
+<button class="btn" onclick="clearAccountCache()"><span data-i18n="clearCache">清除账号缓存</span></button>
+</div>
 </div>
 </div>
 </div>
@@ -494,6 +523,52 @@
 <div class="modal-foot">
 <button class="btn" onclick="closeConfirmModal()"><span data-i18n="cancel">取消</span></button>
 <button class="btn btn-primary" id="confirmOkBtn"><span data-i18n="ok">确定</span></button>
+</div>
+</div>
+</div>
+
+<!-- Modpack Preview Modal -->
+<div class="modal" id="packPreviewModal">
+<div class="modal-box glass" style="width:580px;max-height:80vh;display:flex;flex-direction:column">
+<div class="modal-head"><h3 id="packPreviewTitle">整合包内容</h3><button class="btn btn-icon" onclick="closePackPreview()"><svg width="14" height="14"><use href="#icon-close"/></svg></button></div>
+<div class="modal-body" style="overflow:hidden;display:flex;flex-direction:column">
+<div id="packPreviewSummary" style="font-size:12px;color:var(--text2);line-height:1.9"></div>
+<div id="packPreviewList" style="margin-top:10px;max-height:300px;overflow-y:auto;font-size:12px;border:1px solid var(--glass-border);border-radius:8px;padding:6px"></div>
+</div>
+<div class="modal-foot">
+<button class="btn" onclick="closePackPreview()"><span data-i18n="cancel">取消</span></button>
+<button class="btn btn-primary" id="packPreviewOkBtn"><span data-i18n="packConfirm">同意并下载</span></button>
+</div>
+</div>
+</div>
+
+<!-- Skin Preview Modal -->
+<div class="modal" id="skinModal">
+<div class="modal-box glass" style="width:420px">
+<div class="modal-head"><h3 data-i18n="skinPreview">皮肤预览</h3><button class="btn btn-icon" onclick="closeSkinModal()"><svg width="14" height="14"><use href="#icon-close"/></svg></button></div>
+<div class="modal-body" style="text-align:center">
+<canvas id="skinBig" width="128" height="256" style="image-rendering:pixelated;height:240px;width:120px;background:rgba(0,0,0,.12);border-radius:8px"></canvas>
+<div id="skinModalName" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
+<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-top:12px">
+<span style="font-size:12px;color:var(--text2)" data-i18n="skinVariant">模型</span>
+<select class="glass input" id="skinVariant" style="width:110px" onchange="refreshSkinPreview()"><option value="classic">经典</option><option value="slim">纤细</option></select>
+</div>
+<p id="skinApplyHint" style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.6"></p>
+</div>
+<div class="modal-foot">
+<button class="btn" onclick="closeSkinModal()"><span data-i18n="cancel">取消</span></button>
+<button class="btn btn-primary" id="skinApplyBtn" onclick="applyCurrentSkin()"><span data-i18n="applySkin">应用皮肤</span></button>
+</div>
+</div>
+</div>
+
+<!-- Channel Modal -->
+<div class="modal" id="channelModal">
+<div class="modal-box glass" style="width:340px">
+<div class="modal-head"><h3 data-i18n="joinChannel">加入频道</h3><button class="btn btn-icon" onclick="closeChannelModal()"><svg width="14" height="14"><use href="#icon-close"/></svg></button></div>
+<div class="modal-body" style="text-align:center">
+<img src="../public/pd.jpg" alt="channel" style="width:100%;max-height:58vh;object-fit:contain;border-radius:10px">
+<p style="font-size:12px;color:var(--text2);margin-top:10px" data-i18n="channelHint">扫码加入频道，反馈问题与交流</p>
 </div>
 </div>
 </div>

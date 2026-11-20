@@ -9,12 +9,15 @@ contextBridge.exposeInMainWorld('wsl', {
   logoutMicrosoft: () => ipcRenderer.invoke('auth:logout'),
 
   browseJava: () => ipcRenderer.invoke('java:browse'),
-  detectJava: () => ipcRenderer.invoke('java:detect'),
+  detectJava: (mcVersion) => ipcRenderer.invoke('java:detect', mcVersion),
+  detectBestJava: (mcVersion) => ipcRenderer.invoke('java:detectBest', mcVersion),
   detectAllJava: () => ipcRenderer.invoke('java:detectAll'),
 
   getVersions: (mirror) => ipcRenderer.invoke('mc:fetchVersions', mirror),
   getLocalVersions: () => ipcRenderer.invoke('mc:getLocalVersions'),
   getVersionMeta: (id) => ipcRenderer.invoke('mc:getVersionMeta', id),
+  installVersion: (id) => ipcRenderer.invoke('mc:installVersion', id),
+  onInstallProgress: (cb) => { ipcRenderer.on('mc:installProgress', (_, d) => cb(d)) },
 
   launchGame: (config) => ipcRenderer.invoke('mc:launch', config),
 
@@ -34,6 +37,9 @@ contextBridge.exposeInMainWorld('wsl', {
 
   queueDownload: (items) => ipcRenderer.invoke('mc:queueDownload', items),
   cancelQueue: (id) => ipcRenderer.invoke('mc:cancelQueue', id),
+  importModpack: (filePath, opts) => ipcRenderer.invoke('mc:importModpack', filePath, opts),
+  parseModpack: (filePath) => ipcRenderer.invoke('mc:parseModpack', filePath),
+  onImportProgress: (cb) => { ipcRenderer.on('mc:importProgress', (_, d) => cb(d)) },
 
   minecraftDir: () => ipcRenderer.invoke('mc:minecraftDir'),
   fileExists: (p) => ipcRenderer.invoke('mc:fileExists', p),
@@ -42,6 +48,7 @@ contextBridge.exposeInMainWorld('wsl', {
   readDir: (p) => ipcRenderer.invoke('mc:readDir', p),
   downloadFile: (url, dest) => ipcRenderer.invoke('mc:downloadFile', url, dest),
   openDir: (p) => ipcRenderer.invoke('mc:openDir', p),
+  openUrl: (url) => ipcRenderer.invoke('mc:openUrl', url),
   deleteFile: (p) => ipcRenderer.invoke('mc:deleteFile', p),
 
   getLogo: () => ipcRenderer.invoke('app:logo'),
@@ -54,8 +61,15 @@ contextBridge.exposeInMainWorld('wsl', {
   onQueueProgress: (cb) => { ipcRenderer.on('mc:queueProgress', (_, d) => cb(d)) },
   listMods: (version) => ipcRenderer.invoke('mc:listMods', version),
   toggleMod: (filename) => ipcRenderer.invoke('mc:toggleMod', filename),
-  downloadJava: () => ipcRenderer.invoke('mc:downloadJava'),
+  downloadJava: (opts) => ipcRenderer.invoke('mc:downloadJava', opts),
   onJavaDlProgress: (cb) => { ipcRenderer.on('mc:javaDlProgress', (_, d) => cb(d)) },
+
+  getAppVersion: () => ipcRenderer.invoke('app:version'),
+  checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
+
+  listSkins: (after) => ipcRenderer.invoke('skins:list', { after }),
+  applySkin: (payload) => ipcRenderer.invoke('skins:apply', payload),
+  preinstallMods: (versionId) => ipcRenderer.invoke('mods:preinstall', versionId),
 
   // ── AI Game Companion ──
   botConnect: (opts) => ipcRenderer.invoke('bot:connect', opts),
@@ -100,4 +114,31 @@ contextBridge.exposeInMainWorld('wsl', {
   etStatus: () => ipcRenderer.invoke('et:status'),
   etQR: (text) => ipcRenderer.invoke('et:qr', text),
   onEtStatus: (cb) => { ipcRenderer.on('et:status', (_, s) => cb(s)) },
+
+  // ── Music ──
+  musicStart: () => ipcRenderer.invoke('music:start'),
+  musicStop: () => ipcRenderer.invoke('music:stop'),
+  musicControl: (action) => ipcRenderer.invoke('music:control', action),
+  musicSearch: (opts) => ipcRenderer.invoke('music:search', opts),
+  onMusicInfo: (cb) => { ipcRenderer.on('music:info', (_, d) => cb(d)) },
+
+  // ── IM ──
+  imRegister: (opts) => ipcRenderer.invoke('im:register', opts),
+  imLogin: (opts) => ipcRenderer.invoke('im:login', opts),
+  imLogout: () => ipcRenderer.invoke('im:logout'),
+  imConnect: () => ipcRenderer.invoke('im:connect'),
+  imDisconnect: () => ipcRenderer.invoke('im:disconnect'),
+  imMe: () => ipcRenderer.invoke('im:me'),
+  imFriendList: () => ipcRenderer.invoke('im:friends:list'),
+  imFriendSearch: (username) => ipcRenderer.invoke('im:friends:search', username),
+  imFriendAdd: (username) => ipcRenderer.invoke('im:friends:add', username),
+  imFriendRemove: (id) => ipcRenderer.invoke('im:friends:remove', id),
+  imChatSend: (to, text) => ipcRenderer.invoke('im:chat:send', { to, text }),
+  imChatHistory: (id) => ipcRenderer.invoke('im:chat:history', id),
+  imChatRead: (id) => ipcRenderer.invoke('im:chat:read', id),
+  imChatUnread: () => ipcRenderer.invoke('im:chat:unread'),
+  onImEvent: (cb) => {
+    const evs = ['connected', 'disconnected', 'error', 'kicked', 'friends:status', 'friend:status', 'friend:new', 'friend:removed', 'chat:message', 'chat:unread'];
+    evs.forEach(ev => ipcRenderer.on('im:' + ev, (_, d) => cb(ev, d)));
+  },
 });

@@ -2,12 +2,23 @@ const { app, BrowserWindow, ipcMain, Menu, dialog, shell, nativeImage, net } = r
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
+const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
+const AdmZip = require('adm-zip');
+const { io } = require('socket.io-client');
 const { Auth } = require('./src/vendor/auth');
 
-app.setAppUserModelId('com.wanshuang.launcher');
+app.setAppUserModelId(app.isPackaged
+  ? '045C59DF.WanshuangLauncher'
+  : 'com.wanshuang.launcher');
+
+// ── IM Server config (暂停使用，启用前请填入真实服务器地址) ──
+const IM_SERVER_URL = '';
+const IM_TOKEN_FILE = path.join(app.getPath('userData'), 'im_token.json');
 
 const MINECRAFT_DIR = path.join(process.env.APPDATA || process.env.HOME, '.minecraft');
+const JAVA_RUNTIME_DIR = path.join(__dirname, 'runtime', 'java');
 const MIRRORS = [
   { name: 'Official', url: 'https://piston-meta.mojang.com' },
   { name: 'BMCLAPI', url: 'https://bmclapi2.bangbang93.com' },
@@ -124,6 +135,10 @@ function createWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } });
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'mediaKeySystem') callback(true);
+    else callback(false);
+  });
   // Init bot IPC after window is ready
   try {
     const bot = require('./bot');
@@ -163,7 +178,7 @@ ipcMain.handle('app:logo', () => {
 });
 
 // ── Java detect ──
-ipcMain.handle('java:detect', () => {
+function collectJavaCandidates() {
   const candidates = [];
   try {
     const regOut = execSync('reg query "HKLM\\SOFTWARE\\JavaSoft\\Java Runtime Environment" /s /v JavaHome 2>nul', { encoding: 'utf8', timeout: 3000 });
@@ -176,38 +191,143 @@ ipcMain.handle('java:detect', () => {
   const pf = process.env['ProgramFiles'] || 'C:\\Program Files';
   const pfx86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
   for (const base of [pf, pfx86]) {
-    for (const dir of ['Java', 'Eclipse Adoptium', 'BellSoft', 'Amazon Corretto', 'Zulu']) {
+    for (const dir of ['Java', 'Eclipse Adoptium', 'BellSoft', 'Amazon Corretto', 'Zulu', 'Microsoft']) {
       const p = path.join(base, dir);
-      if (fs.existsSync(p)) { for (const entry of fs.readdirSync(p)) { const bin = path.join(p, entry, 'bin', 'java.exe'); if (fs.existsSync(bin)) candidates.push(bin) } }
+      if (fs.existsSync(p)) {
+        for (const entry of fs.readdirSync(p)) {
+          for (const exe of ['javaw.exe', 'java.exe']) {
+            const bin = path.join(p, entry, 'bin', exe);
+            if (fs.existsSync(bin)) candidates.push(bin);
+          }
+        }
+      }
     }
   }
-  if (process.env.JAVA_HOME) { const bin = path.join(process.env.JAVA_HOME, 'bin\\java.exe'); if (fs.existsSync(bin)) candidates.push(bin) }
+  if (process.env.JAVA_HOME) {
+    for (const exe of ['javaw.exe', 'java.exe']) {
+      const bin = path.join(process.env.JAVA_HOME, 'bin', exe);
+      if (fs.existsSync(bin)) candidates.push(bin);
+    }
+  }
   try { const out = execSync('where java 2>nul', { encoding: 'utf8', timeout: 3000 }); for (const line of out.split('\n')) { const p = line.trim(); if (p && fs.existsSync(p)) candidates.push(p) } } catch {}
-  return candidates.length > 0 ? [...new Set(candidates)][0] : null;
+  // 启动器内置下载的 Java
+  try {
+    if (fs.existsSync(JAVA_RUNTIME_DIR)) {
+      for (const entry of fs.readdirSync(JAVA_RUNTIME_DIR)) {
+        const dir = path.join(JAVA_RUNTIME_DIR, entry);
+        let isDir = false;
+        try { isDir = fs.statSync(dir).isDirectory() } catch {}
+        if (!isDir) continue;
+        for (const exe of ['javaw.exe', 'java.exe']) {
+          const bin = path.join(dir, 'bin', exe);
+          if (fs.existsSync(bin)) candidates.push(bin);
+        }
+      }
+    }
+  } catch {}
+  return [...new Set(candidates)].filter(p => fs.existsSync(p));
+}
+
+function javaMajorFromPath(javaPath) {
+  const folder = path.basename(path.dirname(path.dirname(javaPath))).toLowerCase();
+  let m = folder.match(/(?:jdk|jre)[-_]?(\d+)/);
+  if (m) { const n = parseInt(m[1]); return n === 1 ? 8 : n }
+  m = folder.match(/1\.(\d+)/);
+  if (m) return parseInt(m[1]);
+  return 0;
+}
+
+function probeJavaMajor(javaPath) {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const finish = (major) => { if (done) return; done = true; resolve(major) };
+    try {
+      const p = spawn(javaPath, ['-version'], { windowsHide: true });
+      const collect = (d) => { out += d.toString() };
+      p.stdout.on('data', collect);
+      p.stderr.on('data', collect);
+      const timer = setTimeout(() => { try { p.kill() } catch {}; finish(0) }, 5000);
+      p.on('close', () => {
+        clearTimeout(timer);
+        const m = out.match(/version "(\d+)(?:\.(\d+))?/);
+        finish(m ? (m[1] === '1' ? parseInt(m[2] || '0') : parseInt(m[1])) : 0);
+      });
+      p.on('error', () => { clearTimeout(timer); finish(0) });
+    } catch { finish(0) }
+  });
+}
+
+// Minecraft 版本所需的 Java 主版本
+function requiredJavaMajor(mcVersion) {
+  const m = String(mcVersion || '').match(/1\.(\d+)(?:\.(\d+))?/);
+  if (!m) return 0;
+  const minor = parseInt(m[1]); const patch = parseInt(m[2] || '0');
+  if (minor <= 16) return 8;
+  if (minor <= 19) return 17;
+  if (minor === 20) return patch >= 5 ? 21 : 17;
+  return 21;
+}
+
+async function chooseJava(mcVersion) {
+  const all = collectJavaCandidates();
+  if (!all.length) return null;
+  const probed = (await Promise.all(all.slice(0, 16).map(async (p) => {
+    const major = (await probeJavaMajor(p)) || javaMajorFromPath(p);
+    return { path: p, major };
+  }))).filter(x => x.major > 0);
+  const req = requiredJavaMajor(mcVersion);
+  if (probed.length) {
+    if (req) {
+      const compatible = probed.filter(x => x.major >= req).sort((a, b) => a.major - b.major);
+      if (compatible.length) return { ...compatible[0], required: req };
+    }
+    for (const major of [21, 17, 8]) {
+      const hit = probed.find(x => x.major === major);
+      if (hit) return { ...hit, required: req };
+    }
+    return { ...probed.sort((a, b) => b.major - a.major)[0], required: req };
+  }
+  return { path: all[0], major: 0, required: req };
+}
+
+// 按版本 JSON 声明的 Java 主版本挑选（优先精确匹配，其次更高版本）
+async function chooseJavaForMajor(required) {
+  if (!required) return null;
+  const all = collectJavaCandidates();
+  if (!all.length) return null;
+  const probed = (await Promise.all(all.slice(0, 16).map(async (p) => {
+    const major = (await probeJavaMajor(p)) || javaMajorFromPath(p);
+    return { path: p, major };
+  }))).filter(x => x.major > 0);
+  const exact = probed.find(x => x.major === required);
+  if (exact) return { ...exact, required };
+  const above = probed.filter(x => x.major > required).sort((a, b) => a.major - b.major)[0];
+  if (above) return { ...above, required };
+  return null;
+}
+
+// 整合包实例 / 加载器版本 → 对应的原版版本号
+function baseGameVersionOf(versionId) {
+  try {
+    const p = path.join(MINECRAFT_DIR, 'versions', versionId, versionId + '.json');
+    const meta = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (meta.wslPack?.mcVersion) return meta.wslPack.mcVersion;
+    if (meta.inheritsFrom) return baseGameVersionOf(meta.inheritsFrom) || meta.inheritsFrom;
+  } catch {}
+  return versionId;
+}
+
+ipcMain.handle('java:detect', async (_, mcVersion) => {
+  const r = await chooseJava(mcVersion);
+  return r ? r.path : null;
 });
 
-ipcMain.handle('java:detectAll', () => {
-  const candidates = [];
-  try {
-    const regOut = execSync('reg query "HKLM\\SOFTWARE\\JavaSoft\\Java Runtime Environment" /s /v JavaHome 2>nul', { encoding: 'utf8', timeout: 3000 });
-    for (const line of regOut.split('\n')) { const m = line.match(/JavaHome\s+REG_SZ\s+(.+)/); if (m) candidates.push(path.join(m[1].trim(), 'bin\\java.exe')) }
-  } catch {}
-  try {
-    const regOut = execSync('reg query "HKLM\\SOFTWARE\\JavaSoft\\JDK" /s /v JavaHome 2>nul', { encoding: 'utf8', timeout: 3000 });
-    for (const line of regOut.split('\n')) { const m = line.match(/JavaHome\s+REG_SZ\s+(.+)/); if (m) candidates.push(path.join(m[1].trim(), 'bin\\java.exe')) }
-  } catch {}
-  const pf = process.env['ProgramFiles'] || 'C:\\Program Files';
-  const pfx86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-  for (const base of [pf, pfx86]) {
-    for (const dir of ['Java', 'Eclipse Adoptium', 'BellSoft', 'Amazon Corretto', 'Zulu']) {
-      const p = path.join(base, dir);
-      if (fs.existsSync(p)) { for (const entry of fs.readdirSync(p)) { const bin = path.join(p, entry, 'bin', 'java.exe'); if (fs.existsSync(bin)) candidates.push(bin) } }
-    }
-  }
-  if (process.env.JAVA_HOME) { const bin = path.join(process.env.JAVA_HOME, 'bin\\java.exe'); if (fs.existsSync(bin)) candidates.push(bin) }
-  try { const out = execSync('where java 2>nul', { encoding: 'utf8', timeout: 3000 }); for (const line of out.split('\n')) { const p = line.trim(); if (p && fs.existsSync(p)) candidates.push(p) } } catch {}
-  return [...new Set(candidates)];
+ipcMain.handle('java:detectBest', async (_, mcVersion) => {
+  return await chooseJava(mcVersion);
 });
+
+ipcMain.handle('java:detectAll', () => collectJavaCandidates());
 
 ipcMain.handle('java:browse', async () => {
   const r = await dialog.showOpenDialog(mainWindow, {
@@ -417,6 +537,54 @@ ipcMain.handle('mc:getVersionMeta', (_, id) => {
   try { return JSON.parse(fs.readFileSync(path.join(MINECRAFT_DIR, 'versions', id, id + '.json'), 'utf8')) } catch { return null }
 });
 
+// ── 完整安装版本（客户端、依赖库、资源、运行库解压）──
+ipcMain.handle('mc:installVersion', async (_, versionId) => {
+  const sendLog = (msg) => mainWindow?.webContents.send('mc:log', msg);
+  const report = (stage, message, pct) => mainWindow?.webContents.send('mc:installProgress', { stage, message, pct: Math.max(0, Math.min(100, Math.round(pct))) });
+  try {
+    report('meta', '正在获取版本信息...', 3);
+    const meta = await resolveVersion(versionId);
+    sendLog('Installing version: ' + versionId);
+
+    report('libraries', '正在下载依赖库...', 8);
+    let lastLibPct = 8;
+    await resolveLibraries(meta, sendLog, (done, total) => {
+      const pct = 8 + (done / Math.max(total, 1)) * 32;
+      if (pct - lastLibPct >= 1) { lastLibPct = pct; report('libraries', '正在下载依赖库 ' + done + '/' + total, pct) }
+    });
+
+    report('assets-index', '正在获取资源索引...', 42);
+    const assetIndexData = await getAssetIndex(meta, sendLog);
+
+    report('assets', '正在校验资源文件...', 45);
+    let lastAssetPct = 45;
+    await resolveAssets(assetIndexData, sendLog, (done, total) => {
+      const pct = 45 + (done / Math.max(total, 1)) * 50;
+      if (pct - lastAssetPct >= 1) { lastAssetPct = pct; report('assets', '正在下载资源文件 ' + done + '/' + total, pct) }
+    });
+
+    report('natives', '正在解压运行库...', 97);
+    await extractNatives(meta, sendLog);
+
+    report('mods', '正在预装皮肤模组...', 98);
+    try {
+      const preset = await preinstallSkinMods(versionId, sendLog);
+      if (preset.skipped === 'no-loader') sendLog('原版版本无需预装皮肤模组');
+      else if (preset.installed?.length) sendLog('预装模组完成: ' + preset.installed.join(', '));
+    } catch (e) {
+      sendLog('预装模组失败: ' + e.message);
+    }
+
+    report('done', '安装完成', 100);
+    sendLog('Version installed: ' + versionId);
+    return { success: true, versionId };
+  } catch (e) {
+    sendLog('Install error: ' + e.message);
+    report('error', e.message, 0);
+    return { success: false, error: e.message };
+  }
+});
+
 // ── Download with retry ──
 async function downloadWithRetry(url, dest, retries = 3, onProgress) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -431,8 +599,21 @@ async function downloadWithRetry(url, dest, retries = 3, onProgress) {
         const file = fs.createWriteStream(dest);
         const req = net.request(url);
         let total = 0, dl = 0;
-        req.on('response', (res) => { total = parseInt(res.headers['content-length'] || '0'); res.on('data', c => { dl += c.length; if (total > 0 && onProgress) onProgress(dl, total) }); res.pipe(file) });
+        req.on('response', (res) => {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+            res.resume();
+            try { file.destroy() } catch {}
+            try { fs.unlinkSync(dest) } catch {}
+            reject(new Error('HTTP ' + res.statusCode));
+            return;
+          }
+          total = parseInt(res.headers['content-length'] || '0');
+          res.on('data', c => { dl += c.length; if (total > 0 && onProgress) onProgress(dl, total) });
+          res.on('error', (e) => { try { file.destroy() } catch {}; reject(e) });
+          res.pipe(file);
+        });
         file.on('finish', () => { file.close(); resolve() });
+        file.on('error', (e) => { try { file.destroy() } catch {}; reject(e) });
         req.on('error', reject);
         req.end();
       });
@@ -533,7 +714,7 @@ ipcMain.handle('mc:getLoaders', async (_, versionId) => {
   return loaders;
 });
 
-ipcMain.handle('mc:installLoader', async (_, { mcVersion, loaderName, loaderType, loaderVersion, downloadUrl, javaPath: jp }) => {
+async function installLoaderInternal({ mcVersion, loaderName, loaderType, loaderVersion, downloadUrl, javaPath: jp }) {
   const javaPath = jp || 'java';
   const newId = mcVersion + '-' + loaderName.toLowerCase();
   const verDir = path.join(MINECRAFT_DIR, 'versions', newId);
@@ -640,44 +821,63 @@ ipcMain.handle('mc:installLoader', async (_, { mcVersion, loaderName, loaderType
       ];
       sendProgress(qItems, 4, 0);
 
-      qItems[0].status = 'downloading'; sendProgress(qItems, 4, 0);
-      const installerPath = path.join(MINECRAFT_DIR, 'runtime', 'loader-installer.jar');
-      fs.mkdirSync(path.join(MINECRAFT_DIR, 'runtime'), { recursive: true });
-      log('正在下载 ' + loaderName + ' 安装器...');
-      const dlUrls = [loaderMirrorUrl(downloadUrl)];
-      if (dlUrls[0] !== downloadUrl) dlUrls.push(downloadUrl);
-      for (const [domain, path] of Object.entries(LOADER_MIRROR_PATHS)) {
-        if (downloadUrl.includes(domain)) {
-          dlUrls.push(downloadUrl.replace('https://' + domain, 'https://bmclapi2.bangbang93.com' + path));
-          break;
-        }
-      }
-      let dlOk = false;
-      for (const u of dlUrls) {
-        if (await downloadWithRetry(u, installerPath)) { dlOk = true; break }
-      }
-      if (!dlOk) throw new Error(loaderName + ' 安装器下载失败，请检查网络或切换下载源');
-      qItems[0].progress = 100; qItems[0].status = 'done'; sendProgress(qItems, 4, 1);
-
-      qItems[1].status = 'downloading'; sendProgress(qItems, 4, 1);
-      log('正在运行 ' + loaderName + ' 安装器...');
       const versionsDir = path.join(MINECRAFT_DIR, 'versions');
       if (!fs.existsSync(versionsDir)) fs.mkdirSync(versionsDir, { recursive: true });
-      const versionsBefore = new Set(fs.readdirSync(versionsDir));
-      const cmd = loaderType === 'forge' ? '--installClient' : '--install-client';
-      try {
-        execSync(`"${javaPath}" -jar "${installerPath}" ${cmd} 2>&1`, { timeout: 180000, cwd: MINECRAFT_DIR });
-      } catch (e) {
-        try { fs.unlinkSync(installerPath) } catch {}
-        throw new Error(loaderName + ' 安装器运行失败: ' + (e.stderr || e.message || '').substring(0, 200));
-      }
-      qItems[1].progress = 100; qItems[1].status = 'done'; sendProgress(qItems, 4, 2);
+      const verShort = loaderVersion.startsWith(mcVersion + '-') ? loaderVersion.slice(mcVersion.length + 1) : loaderVersion;
+      const candidateNames = loaderType === 'forge'
+        ? [mcVersion + '-forge-' + verShort]
+        : ['neoforge-' + verShort, mcVersion + '-neoforge-' + verShort];
+      let created = candidateNames.find(name => {
+        const dir = path.join(versionsDir, name);
+        try { return fs.existsSync(dir) && fs.readdirSync(dir).some(f => f.endsWith('.json')) } catch { return false }
+      });
 
-      qItems[2].status = 'downloading'; sendProgress(qItems, 4, 2);
-      const versionsAfter = fs.readdirSync(versionsDir);
-      const created = versionsAfter.find(f => !versionsBefore.has(f));
-      if (!created) throw new Error(loaderName + ' 安装器运行完毕但未生成版本文件夹');
-      log('安装器生成的版本: ' + created);
+      if (created) {
+        log('发现已安装的 ' + loaderName + ' 版本 ' + created + '，直接复用');
+        qItems[0].progress = 100; qItems[0].status = 'done';
+        qItems[1].progress = 100; qItems[1].status = 'done';
+        sendProgress(qItems, 4, 2);
+      } else {
+        qItems[0].status = 'downloading'; sendProgress(qItems, 4, 0);
+        const installerPath = path.join(MINECRAFT_DIR, 'runtime', 'loader-installer.jar');
+        fs.mkdirSync(path.join(MINECRAFT_DIR, 'runtime'), { recursive: true });
+        log('正在下载 ' + loaderName + ' 安装器...');
+        const dlUrls = [loaderMirrorUrl(downloadUrl)];
+        if (dlUrls[0] !== downloadUrl) dlUrls.push(downloadUrl);
+        for (const [domain, path] of Object.entries(LOADER_MIRROR_PATHS)) {
+          if (downloadUrl.includes(domain)) {
+            dlUrls.push(downloadUrl.replace('https://' + domain, 'https://bmclapi2.bangbang93.com' + path));
+            break;
+          }
+        }
+        let dlOk = false;
+        for (const u of dlUrls) {
+          if (await downloadWithRetry(u, installerPath)) { dlOk = true; break }
+        }
+        if (!dlOk) throw new Error(loaderName + ' 安装器下载失败，请检查网络或切换下载源');
+        qItems[0].progress = 100; qItems[0].status = 'done'; sendProgress(qItems, 4, 1);
+
+        qItems[1].status = 'downloading'; sendProgress(qItems, 4, 1);
+        log('正在运行 ' + loaderName + ' 安装器...');
+        const versionsBefore = new Set(fs.readdirSync(versionsDir));
+        const cmd = loaderType === 'forge' ? '--installClient' : '--install-client';
+        try {
+          execSync(`"${javaPath}" -jar "${installerPath}" ${cmd} 2>&1`, { timeout: 180000, cwd: MINECRAFT_DIR });
+        } catch (e) {
+          try { fs.unlinkSync(installerPath) } catch {}
+          throw new Error(loaderName + ' 安装器运行失败: ' + (e.stderr || e.message || '').substring(0, 200));
+        }
+        qItems[1].progress = 100; qItems[1].status = 'done'; sendProgress(qItems, 4, 2);
+
+        qItems[2].status = 'downloading'; sendProgress(qItems, 4, 2);
+        const versionsAfter = fs.readdirSync(versionsDir);
+        created = versionsAfter.find(f => !versionsBefore.has(f));
+        if (!created) {
+          created = candidateNames.find(name => fs.existsSync(path.join(versionsDir, name)));
+        }
+        if (!created) throw new Error(loaderName + ' 安装器运行完毕但未生成版本文件夹');
+        log('安装器生成的版本: ' + created);
+      }
       const tempDir = path.join(versionsDir, created);
       if (tempDir !== verDir) {
         if (fs.existsSync(verDir)) fs.rmSync(verDir, { recursive: true });
@@ -702,11 +902,290 @@ ipcMain.handle('mc:installLoader', async (_, { mcVersion, loaderName, loaderType
     }
 
     log('加载器安装完成: ' + newId);
+    try {
+      const preset = await preinstallSkinMods(newId, log);
+      if (preset.installed?.length) log('预装模组完成: ' + preset.installed.join(', '));
+    } catch (e) { log('预装模组失败: ' + e.message) }
     return { success: true, newVersionId: newId };
   } catch (e) {
     log('加载器安装失败: ' + e.message);
     // Clean up empty folder on failure
     try { if (fs.existsSync(verDir) && fs.readdirSync(verDir).length === 0) fs.rmdirSync(verDir) } catch {}
+    return { success: false, error: e.message };
+  }
+}
+
+ipcMain.handle('mc:installLoader', (_, opts) => installLoaderInternal(opts));
+
+// ── Modrinth 整合包导入 ──
+function packSafeJoin(base, rel) {
+  const root = path.normalize(base);
+  const target = path.normalize(path.join(root, rel));
+  if (target !== root && !target.startsWith(root + path.sep)) throw new Error('整合包内包含非法路径: ' + rel);
+  return target;
+}
+
+function sanitizePackId(name, version) {
+  let id = (String(name || '') + '-' + String(version || '')).replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-+/g, '-').replace(/^[-.]+|[-.]+$/g, '');
+  if (!id) id = 'modpack-' + Date.now().toString(36);
+  return id.slice(0, 64);
+}
+
+function uniqueVersionId(baseId) {
+  let id = baseId;
+  let n = 2;
+  while (fs.existsSync(path.join(MINECRAFT_DIR, 'versions', id))) id = baseId + '-' + (n++);
+  return id;
+}
+
+function getConfiguredJavaPath() {
+  try { return JSON.parse(fs.readFileSync(path.join(MINECRAFT_DIR, 'wsl_config.json'), 'utf8')).javaPath || 'java' } catch { return 'java' }
+}
+
+function hashFile(file, algo) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash(algo);
+    const stream = fs.createReadStream(file);
+    stream.on('data', d => h.update(d));
+    stream.on('end', () => resolve(h.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
+async function mapLimit(items, limit, worker) {
+  let index = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      await worker(items[current], current);
+    }
+  });
+  await Promise.all(runners);
+}
+
+function extractOverrideEntries(zip, prefix, instanceDir) {
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const name = entry.entryName.replace(/\\/g, '/');
+    if (!name.startsWith(prefix)) continue;
+    const rel = name.slice(prefix.length);
+    if (!rel) continue;
+    const dest = packSafeJoin(instanceDir, rel);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, entry.getData());
+  }
+}
+
+// 解析整合包内容（不下载），返回给前端展示确认清单
+function readModpackInfo(filePath) {
+  const zip = new AdmZip(filePath);
+  const indexEntry = zip.getEntry('modrinth.index.json');
+  if (!indexEntry) throw new Error('不是有效的 Modrinth 整合包（缺少 modrinth.index.json）');
+  let index;
+  try { index = JSON.parse(indexEntry.getData().toString('utf8')) } catch { throw new Error('modrinth.index.json 解析失败') }
+
+  const deps = index.dependencies || {};
+  const mcVersion = deps.minecraft;
+  if (!mcVersion) throw new Error('整合包未指定 Minecraft 版本');
+
+  const loaderDefs = [
+    ['fabric-loader', 'Fabric', 'fabric'],
+    ['quilt-loader', 'Quilt', 'quilt'],
+    ['forge', 'Forge', 'forge'],
+    ['neoforge', 'NeoForge', 'neoforge'],
+  ];
+  let loader = null;
+  for (const [key, name, type] of loaderDefs) {
+    if (deps[key]) { loader = { name, type, version: String(deps[key]) }; break }
+  }
+
+  const files = (index.files || []).filter(f => f && f.path && (!f.env || f.env.client !== 'unsupported'));
+  let overrideCount = 0;
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const name = entry.entryName.replace(/\\/g, '/');
+    if (name.startsWith('overrides/') || name.startsWith('client-overrides/')) overrideCount++;
+  }
+  const totalSize = files.reduce((sum, f) => sum + (Number(f.fileSize) || 0), 0);
+  return {
+    name: index.name || path.basename(filePath, path.extname(filePath)),
+    version: String(index.versionId || '1.0'),
+    mcVersion,
+    loader,
+    files,
+    fileCount: files.length,
+    totalSize,
+    overrideCount,
+  };
+}
+
+ipcMain.handle('mc:parseModpack', async (_, filePath) => {
+  try {
+    if (!filePath) {
+      const picked = await dialog.showOpenDialog(mainWindow, {
+        title: '导入 Modrinth 整合包',
+        properties: ['openFile'],
+        filters: [{ name: 'Modrinth Modpack', extensions: ['mrpack'] }, { name: '所有文件', extensions: ['*'] }],
+      });
+      if (picked.canceled || !picked.filePaths?.[0]) return { success: false, canceled: true };
+      filePath = picked.filePaths[0];
+    }
+    if (!fs.existsSync(filePath)) throw new Error('文件不存在');
+    const info = readModpackInfo(filePath);
+    return {
+      success: true,
+      filePath,
+      name: info.name,
+      version: info.version,
+      mcVersion: info.mcVersion,
+      loader: info.loader,
+      fileCount: info.fileCount,
+      totalSize: info.totalSize,
+      overrideCount: info.overrideCount,
+      files: info.files.slice(0, 500).map(f => ({ path: f.path, size: Number(f.fileSize) || 0 })),
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('mc:importModpack', async (_, filePath, opts) => {
+  const send = (stage, message, percent) => mainWindow?.webContents.send('mc:importProgress', { stage, message, percent: Math.max(0, Math.min(100, Math.round(percent || 0))) });
+  const log = (msg) => mainWindow?.webContents.send('mc:log', msg);
+  let instanceDir = null;
+
+  try {
+    if (!filePath) {
+      const picked = await dialog.showOpenDialog(mainWindow, {
+        title: '导入 Modrinth 整合包',
+        properties: ['openFile'],
+        filters: [{ name: 'Modrinth Modpack', extensions: ['mrpack'] }, { name: 'All Files', extensions: ['*'] }],
+      });
+      if (picked.canceled || !picked.filePaths?.[0]) return { success: false, canceled: true };
+      filePath = picked.filePaths[0];
+    }
+    if (!fs.existsSync(filePath)) throw new Error('文件不存在');
+
+    send('parse', '正在解析整合包...', 2);
+    const zip = new AdmZip(filePath);
+    const indexEntry = zip.getEntry('modrinth.index.json');
+    if (!indexEntry) throw new Error('不是有效的 Modrinth 整合包（缺少 modrinth.index.json）');
+    let index;
+    try { index = JSON.parse(indexEntry.getData().toString('utf8')) } catch { throw new Error('modrinth.index.json 解析失败') }
+
+    const deps = index.dependencies || {};
+    const mcVersion = deps.minecraft;
+    if (!mcVersion) throw new Error('整合包未指定 Minecraft 版本');
+
+    const packName = index.name || path.basename(filePath, path.extname(filePath));
+    const packVersion = String(index.versionId || '1.0');
+    const packId = uniqueVersionId(sanitizePackId(packName, packVersion));
+    instanceDir = path.join(MINECRAFT_DIR, 'versions', packId);
+    fs.mkdirSync(instanceDir, { recursive: true });
+    log('开始导入整合包: ' + packName + ' (' + packId + ')');
+
+    const loaderDefs = [
+      ['fabric-loader', 'Fabric', 'fabric'],
+      ['quilt-loader', 'Quilt', 'quilt'],
+      ['forge', 'Forge', 'forge'],
+      ['neoforge', 'NeoForge', 'neoforge'],
+    ];
+    let loader = null;
+    for (const [key, name, type] of loaderDefs) {
+      if (deps[key]) { loader = { name, type, version: String(deps[key]) }; break }
+    }
+
+    let loaderId = mcVersion;
+    if (loader) {
+      send('loader', '正在安装 ' + loader.name + ' ' + loader.version + '...', 8);
+      let loaderVersion = loader.version;
+      let downloadUrl = '';
+      if (loader.type === 'forge') {
+        if (!loaderVersion.startsWith(mcVersion + '-')) loaderVersion = mcVersion + '-' + loaderVersion;
+        downloadUrl = 'https://maven.minecraftforge.net/net/minecraftforge/forge/' + loaderVersion + '/forge-' + loaderVersion + '-installer.jar';
+      } else if (loader.type === 'neoforge') {
+        downloadUrl = 'https://maven.neoforged.net/releases/net/neoforged/neoforge/' + loaderVersion + '/neoforge-' + loaderVersion + '-installer.jar';
+      }
+      let javaPath = opts?.javaPath || getConfiguredJavaPath();
+      if (!javaPath || javaPath === 'java' || !fs.existsSync(javaPath)) {
+        const best = await chooseJava(mcVersion);
+        javaPath = best?.path || javaPath;
+        if (best?.path) log('使用检测到的 Java: ' + best.path);
+      }
+      const result = await installLoaderInternal({
+        mcVersion, loaderName: loader.name, loaderType: loader.type,
+        loaderVersion, downloadUrl, javaPath,
+      });
+      if (!result?.success && !result?.alreadyInstalled) throw new Error(loader.name + ' 安装失败: ' + (result?.error || '未知错误'));
+      loaderId = result.newVersionId;
+      if (result.alreadyInstalled) log('加载器版本 ' + loaderId + ' 已存在，将复用现有安装');
+      send('loader', loader.name + ' 安装完成', 22);
+    } else {
+      send('loader', '整合包未指定加载器，使用原版 ' + mcVersion, 22);
+    }
+
+    send('profile', '正在创建独立实例...', 25);
+    const packMeta = {
+      id: packId,
+      inheritsFrom: loaderId,
+      type: 'release',
+      wslPack: { name: packName, version: packVersion, source: 'Modrinth', mcVersion, loader: loader ? loader.name : 'vanilla' },
+    };
+    fs.writeFileSync(path.join(instanceDir, packId + '.json'), JSON.stringify(packMeta, null, 2), 'utf8');
+    fs.writeFileSync(path.join(instanceDir, 'wsl-pack.json'), JSON.stringify(packMeta.wslPack, null, 2), 'utf8');
+    const parentJar = path.join(MINECRAFT_DIR, 'versions', loaderId, loaderId + '.jar');
+    if (fs.existsSync(parentJar)) {
+      try { fs.copyFileSync(parentJar, path.join(instanceDir, packId + '.jar')) } catch {}
+    }
+
+    const files = (index.files || []).filter(f => f && f.path && (!f.env || f.env.client !== 'unsupported'));
+    const failed = [];
+    let finished = 0;
+    send('mods', '正在下载模组 0/' + files.length, 32);
+    await mapLimit(files, 4, async (file) => {
+      const dest = packSafeJoin(instanceDir, file.path);
+      if (fs.existsSync(dest) && (!file.fileSize || fs.statSync(dest).size === file.fileSize)) {
+        finished++;
+        send('mods', '正在下载模组 ' + finished + '/' + files.length, 32 + (finished / Math.max(files.length, 1)) * 63);
+        return;
+      }
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      let ok = false;
+      for (const url of (Array.isArray(file.downloads) ? file.downloads : [])) {
+        if (!await downloadWithRetry(url, dest, 2)) continue;
+        if (!file.hashes) { ok = true; break }
+        let valid = true;
+        for (const [algo, expected] of Object.entries(file.hashes)) {
+          if (algo !== 'sha1' && algo !== 'sha512') continue;
+          try { valid = (await hashFile(dest, algo)).toLowerCase() === String(expected).toLowerCase() } catch { valid = false }
+          break;
+        }
+        if (valid) { ok = true; break }
+        try { fs.unlinkSync(dest) } catch {}
+      }
+      if (!ok) failed.push(file.path);
+      finished++;
+      send('mods', '正在下载模组 ' + finished + '/' + files.length, 32 + (finished / Math.max(files.length, 1)) * 63);
+    });
+
+    // overrides 最后写入，保证整合包自带配置优先于下载内容
+    send('overrides', '正在写入整合包配置...', 95);
+    extractOverrideEntries(zip, 'overrides/', instanceDir);
+    extractOverrideEntries(zip, 'client-overrides/', instanceDir);
+
+    if (failed.length) {
+      fs.writeFileSync(path.join(instanceDir, 'wsl-pack-failed.json'), JSON.stringify(failed, null, 2), 'utf8');
+      log('有 ' + failed.length + ' 个文件下载失败，已记录到 wsl-pack-failed.json');
+    }
+    send('done', failed.length ? '导入完成（部分文件失败）' : '导入完成', 100);
+    log('整合包导入完成: ' + packId + (failed.length ? '（' + failed.length + ' 个文件失败）' : ''));
+    return { success: true, versionId: packId, name: packName, failed: failed.length };
+  } catch (e) {
+    send('error', e.message, 0);
+    log('整合包导入失败: ' + e.message);
+    if (instanceDir) {
+      try { fs.rmSync(instanceDir, { recursive: true, force: true }) } catch {}
+    }
     return { success: false, error: e.message };
   }
 });
@@ -721,50 +1200,85 @@ ipcMain.handle('mc:getResourceDetail', async (_, projectId) => {
   try { return await httpGet(`${MODRINTH_API}/project/${projectId}`) } catch { return null }
 });
 
+// ── Translation ──
+const translationCache = new Map();
+
+function decodeHtmlEntities(s) {
+  return String(s)
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+}
+
+function splitForTranslation(text, maxLen = 450) {
+  const parts = [];
+  let rest = text;
+  while (rest.length > maxLen) {
+    let cut = -1;
+    for (const sep of ['\n\n', '\n', '. ', '。', '! ', '? ', '！', '？', '; ', '；', ', ', '，']) {
+      const idx = rest.lastIndexOf(sep, maxLen);
+      if (idx > cut) cut = idx + sep.length;
+    }
+    if (cut <= 0) cut = rest.lastIndexOf(' ', maxLen);
+    if (cut <= 0) cut = maxLen;
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+  }
+  if (rest) parts.push(rest);
+  return parts;
+}
+
+async function translateChunkMyMemory(chunk, from, to) {
+  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(chunk) + '&langpair=' + encodeURIComponent(from + '|' + to);
+  const r = await httpGet(url, null, 15000);
+  const txt = r && r.responseData && r.responseData.translatedText;
+  if (!txt) return null;
+  const out = decodeHtmlEntities(String(txt));
+  if (/MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID LANGUAGE PAIR/i.test(out)) return null;
+  return out;
+}
+
+async function translateChunkGoogle(chunk, from, to) {
+  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=' + from + '&tl=' + to + '&dt=t&q=' + encodeURIComponent(chunk);
+  const r = await httpGet(url, null, 12000);
+  if (Array.isArray(r) && Array.isArray(r[0])) {
+    const out = r[0].map(x => (Array.isArray(x) ? x[0] : '')).filter(Boolean).join('');
+    if (out) return out;
+  }
+  return null;
+}
+
 ipcMain.handle('mc:translateText', async (_, text, targetLang) => {
   if (!text) return '';
-  const t = text.slice(0, 2000);
-  const to = targetLang === 'zh-CN' ? 'zh-Hans' : 'en';
-  const from = targetLang === 'zh-CN' ? 'en' : 'auto';
+  const raw = String(text).replace(/\r/g, '').slice(0, 12000);
+  const toZh = targetLang === 'zh-CN';
+  const from = toZh ? 'en' : 'zh-CN';
+  const to = toZh ? 'zh-CN' : 'en';
+  const cacheKey = from + '>' + to + ':' + crypto.createHash('md5').update(raw).digest('hex');
+  if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
 
-  // Microsoft Translator (Edge 接口，国内可访问)
-  for (let retry = 0; retry < 2; retry++) {
-    try {
-      const token = await new Promise((resolve, reject) => {
-        https.get('https://edge.microsoft.com/translate/auth', { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 8000 }, (res) => {
-          let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d));
-        }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('timeout')) });
-      });
-      if (!token) continue;
-      const result = await new Promise((resolve, reject) => {
-        const body = JSON.stringify([{ Text: t }]);
-        const u = new URL(`https://api-edge.cognitive.microsofttranslator.com/translate?from=${from}&to=${to}&api-version=3.0`);
-        const opts = {
-          hostname: u.hostname, port: 443, path: u.pathname + u.search,
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + token,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(body),
-            'User-Agent': 'Mozilla/5.0',
-          },
-          timeout: 10000,
-        };
-        const req = https.request(opts, (res) => {
-          let d = ''; res.on('data', c => d += c); res.on('end', () => {
-            try { resolve(JSON.parse(d)) } catch { resolve(null) }
-          });
-        });
-        req.on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('timeout')) });
-        req.write(body); req.end();
-      });
-      if (result && Array.isArray(result) && result[0] && result[0].translations && result[0].translations[0]) {
-        return result[0].translations[0].text;
-      }
-    } catch {}
+  const chunks = splitForTranslation(raw);
+  const out = [];
+  let failed = 0;
+  for (const chunk of chunks) {
+    if (!chunk.trim()) { out.push(chunk); continue }
+    let translated = null;
+    for (let attempt = 0; attempt < 2 && !translated; attempt++) {
+      try { translated = await translateChunkMyMemory(chunk, from, to) } catch { translated = null }
+      if (!translated) await new Promise(r => setTimeout(r, 400));
+    }
+    if (!translated) {
+      try { translated = await translateChunkGoogle(chunk, from, to) } catch { translated = null }
+    }
+    if (!translated) { failed++; out.push(chunk) }
+    else out.push(translated);
   }
-
-  return null;
+  if (failed === chunks.length) return null;
+  const result = out.join('');
+  translationCache.set(cacheKey, result);
+  if (translationCache.size > 200) translationCache.delete(translationCache.keys().next().value);
+  return result;
 });
 
 // ── CurseForge API ──
@@ -857,7 +1371,450 @@ ipcMain.handle('mc:readFile', (_, p) => { try { return fs.readFileSync(p, 'utf8'
 ipcMain.handle('mc:ensureDir', (_, p) => { fs.mkdirSync(p, { recursive: true }); return true });
 ipcMain.handle('mc:readDir', (_, p) => { try { return fs.readdirSync(p) } catch { return [] } });
 ipcMain.handle('mc:openDir', (_, p) => { if (fs.existsSync(p)) shell.openPath(p) });
+ipcMain.handle('mc:openUrl', (_, url) => { if (url) shell.openExternal(url) });
 ipcMain.handle('mc:deleteFile', (_, p) => { try { if (fs.existsSync(p)) { fs.rmSync(p, { recursive: true }); return true } } catch { return false } });
+
+// ── 更新检查 / 反馈 ──
+const GITHUB_REPO = 'wanshuang-gzs/WanshuangLauncher';
+function compareVersion(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('app:checkUpdate', async () => {
+  try {
+    const rel = await httpGet(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, { 'Accept': 'application/vnd.github+json' }, 15000);
+    if (!rel || !rel.tag_name) return { success: false, error: '未找到发布版本' };
+    const latest = String(rel.tag_name).replace(/^v/i, '');
+    return {
+      success: true,
+      current: app.getVersion(),
+      latest,
+      hasUpdate: compareVersion(latest, app.getVersion()) > 0,
+      name: rel.name || rel.tag_name,
+      notes: rel.body || '',
+      url: rel.html_url,
+      published: rel.published_at,
+      assets: (rel.assets || []).map(a => ({ name: a.name, size: a.size, url: a.browser_download_url })),
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ── 皮肤库 ──
+function isFullSkinBuffer(buf) {
+  try {
+    const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+    const k = w / 64;
+    if (!Number.isInteger(k) || k < 1 || k > 4) return false;
+    if (h !== 64 * k && h !== 32 * k) return false;
+    const img = nativeImage.createFromBuffer(buf);
+    const size = img.getSize();
+    if (!size.width || !size.height) return true;
+    const bmp = img.getBitmap();
+    let opaque = 0;
+    for (let y = 20 * k; y < 32 * k; y++) {
+      for (let x = 20 * k; x < 28 * k; x++) {
+        if (bmp[(y * size.width + x) * 4 + 3] > 0) opaque++;
+      }
+    }
+    return opaque > 0;
+  } catch { return true }
+}
+
+ipcMain.handle('skins:list', async (_, { after } = {}) => {
+  try {
+    const url = 'https://api.mineskin.org/v2/skins?size=30' + (after ? '&after=' + encodeURIComponent(after) : '');
+    const data = await httpGet(url, null, 20000);
+    if (!data || !Array.isArray(data.skins)) return { success: false, error: '皮肤库接口无响应' };
+    const skins = data.skins.map(s => ({
+      uuid: s.uuid,
+      name: s.name || s.shortId || '',
+      texture: s.texture,
+      url: 'https://textures.minecraft.net/texture/' + s.texture,
+      time: s.timestamp,
+    }));
+    // 预取贴图并转成 data URL，同时过滤掉只有头部的皮肤（限并发 + 重试，避免被限流）
+    const queue = skins.slice();
+    const workers = Array.from({ length: 4 }, async () => {
+      while (queue.length) {
+        const s = queue.shift();
+        for (let attempt = 0; attempt < 3 && !s.dataUrl; attempt++) {
+          try {
+            const res = await net.fetch(s.url);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.length > 100 && buf.length < 50000) {
+              s.full = isFullSkinBuffer(buf);
+              if (s.full) s.dataUrl = 'data:image/png;base64,' + buf.toString('base64');
+            }
+            break;
+          } catch {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 300));
+          }
+        }
+      }
+    });
+    await Promise.all(workers);
+    return {
+      success: true,
+      next: data.pagination?.next?.after || null,
+      skins: skins.filter(s => s.full && s.dataUrl),
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('skins:apply', async (_, payload) => {
+  try {
+    const { account, skinUrl, variant } = payload || {};
+    if (!account || !account.name) return { success: false, error: '请先选择账号' };
+    if (!skinUrl) return { success: false, error: '皮肤地址无效' };
+
+    const skinDir = path.join(MINECRAFT_DIR, 'wsl_skins');
+    fs.mkdirSync(skinDir, { recursive: true });
+    const safeName = String(account.name).replace(/[\\/:*?"<>|]/g, '_');
+    const skinPath = path.join(skinDir, safeName + '.png');
+    if (/^data:image\/png;base64,/i.test(skinUrl)) {
+      fs.writeFileSync(skinPath, Buffer.from(skinUrl.split(',')[1], 'base64'));
+    } else {
+      const ok = await downloadWithRetry(skinUrl, skinPath, 2);
+      if (!ok || !fs.existsSync(skinPath)) throw new Error('皮肤下载失败');
+    }
+
+    const buf = fs.readFileSync(skinPath);
+    if (buf.length < 100 || buf.readUInt32BE(0) !== 0x89504e47) throw new Error('下载到的文件不是有效 PNG 皮肤');
+    const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+    const k = w / 64;
+    if (!Number.isInteger(k) || k < 1 || k > 4 || (h !== 64 * k && h !== 32 * k)) throw new Error('皮肤尺寸必须为 64x64、64x32 或其等比例高清尺寸');
+    if (account.type === 'microsoft' && (k !== 1 || h !== 64)) throw new Error('微软账号仅支持 64x64 皮肤');
+
+    const remoteUrl = account.type === 'microsoft' ? null : await ensureRemoteSkin(buf);
+    const skinMetaJson = JSON.stringify({ variant: variant === 'slim' ? 'slim' : 'classic', updatedAt: Date.now(), remoteUrl }, null, 2);
+    fs.writeFileSync(path.join(skinDir, safeName + '.json'), skinMetaJson, 'utf8');
+    if (skinService) skinService.cache.delete(account.name);
+
+    // 微软账号：直接上传到 Mojang 皮肤服务
+    if (account.type === 'microsoft' && account.token) {
+      const form = new FormData();
+      form.append('variant', variant === 'slim' ? 'slim' : 'classic');
+      form.append('file', new Blob([buf], { type: 'image/png' }), 'skin.png');
+      const res = await fetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+        method: 'PUT',
+        headers: { Authorization: 'Bearer ' + account.token },
+        body: form,
+      });
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('登录已过期，请重新登录微软账号后再试');
+        const body = await res.text().catch(() => '');
+        throw new Error('皮肤上传失败 (HTTP ' + res.status + ')' + (body ? ' ' + body.slice(0, 120) : ''));
+      }
+      mainWindow?.webContents.send('mc:log', 'Skin uploaded for ' + account.name);
+      return { success: true, mode: 'online' };
+    }
+
+    // 离线账号：写入 CustomSkinLoader 本地皮肤目录
+    const cslSkins = path.join(MINECRAFT_DIR, 'CustomSkinLoader', 'LocalSkin', 'skins');
+    fs.mkdirSync(cslSkins, { recursive: true });
+    const cslPath = path.join(cslSkins, safeName + '.png');
+    fs.copyFileSync(skinPath, cslPath);
+    fs.writeFileSync(path.join(cslSkins, safeName + '.json'), skinMetaJson, 'utf8');
+    mainWindow?.webContents.send('mc:log', 'Local skin saved: ' + cslPath);
+    return { success: true, mode: 'local', path: cslPath };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ── 预装模组（皮肤支持）──
+function getVersionModsContext(versionId) {
+  const versionDir = path.join(MINECRAFT_DIR, 'versions', versionId);
+  let meta = {};
+  try { meta = JSON.parse(fs.readFileSync(path.join(versionDir, versionId + '.json'), 'utf8')) } catch {}
+  let pack = null;
+  try {
+    const packPath = path.join(versionDir, 'wsl-pack.json');
+    if (fs.existsSync(packPath)) pack = JSON.parse(fs.readFileSync(packPath, 'utf8'));
+  } catch {}
+  const ids = [versionId, meta.inheritsFrom || '', meta.jar || '', meta.id || ''].join(' ').toLowerCase();
+  let loaderType = '';
+  const packLoader = String(pack?.loader || '').toLowerCase();
+  if (packLoader.includes('neoforge')) loaderType = 'neoforge';
+  else if (packLoader.includes('fabric')) loaderType = 'fabric';
+  else if (packLoader.includes('quilt')) loaderType = 'quilt';
+  else if (packLoader.includes('forge')) loaderType = 'forge';
+  if (!loaderType) {
+    if (ids.includes('neoforge')) loaderType = 'neoforge';
+    else if (ids.includes('fabric')) loaderType = 'fabric';
+    else if (ids.includes('quilt')) loaderType = 'quilt';
+    else if (ids.includes('forge')) loaderType = 'forge';
+  }
+  let mcVersion = pack?.mcVersion || '';
+  if (!mcVersion) {
+    const verRe = /(?:^|[-_])(1\.\d{1,2}(?:\.\d{1,2})?|\d{2}\.\d{1,2}(?:\.\d{1,2})?)(?:$|[-_])/;
+    const fromParent = String(meta.inheritsFrom || '').match(verRe);
+    const fromId = String(versionId).match(verRe);
+    mcVersion = (fromParent && fromParent[1]) || (fromId && fromId[1]) || '';
+  }
+  const gameDir = pack ? versionDir : MINECRAFT_DIR;
+  return { versionDir, gameDir, modsDir: path.join(gameDir, 'mods'), loaderType, mcVersion, isPack: !!pack };
+}
+
+async function fetchModrinthModFile(slug, loader, mcVersion) {
+  const loaderCandidates = loader === 'neoforge' ? ['neoforge', 'forge'] : loader === 'quilt' ? ['quilt', 'fabric'] : [loader];
+  for (const ld of loaderCandidates) {
+    const query = 'loaders=' + encodeURIComponent(JSON.stringify([ld])) + (mcVersion ? '&game_versions=' + encodeURIComponent(JSON.stringify([mcVersion])) : '');
+    try {
+      const list = await httpGet(`https://api.modrinth.com/v2/project/${slug}/version?${query}`, null, 15000);
+      if (!Array.isArray(list) || !list.length) continue;
+      const rel = list.find(v => v.version_type === 'release') || list[0];
+      const file = (rel.files || []).find(f => f.primary) || (rel.files || [])[0];
+      if (file?.url) return { url: file.url, filename: path.basename(file.filename || slug + '.jar'), version: rel.version_number };
+    } catch {}
+  }
+  return null;
+}
+
+async function preinstallSkinMods(versionId, log = () => {}) {
+  const ctx = getVersionModsContext(versionId);
+  if (!ctx.loaderType) return { success: true, skipped: 'no-loader', modsDir: ctx.modsDir };
+  fs.mkdirSync(ctx.modsDir, { recursive: true });
+  const existing = fs.readdirSync(ctx.modsDir);
+  const targets = [
+    { slug: 'customskinloader', name: 'CustomSkinLoader', loader: ctx.loaderType, match: /customskinloader/i },
+  ];
+  if (ctx.loaderType === 'fabric') targets.push({ slug: 'fabric-api', name: 'Fabric API', loader: 'fabric', match: /fabric[-_]api/i });
+  const installed = [];
+  for (const t of targets) {
+    if (existing.some(f => t.match.test(f))) { installed.push(t.name + ' (已存在)'); continue }
+    const info = await fetchModrinthModFile(t.slug, t.loader, ctx.mcVersion);
+    if (!info) { log('未找到适配 ' + ctx.mcVersion + ' 的 ' + t.name); continue }
+    const dest = path.join(ctx.modsDir, info.filename);
+    if (fs.existsSync(dest)) { installed.push(t.name + ' (已存在)'); continue }
+    const ok = await downloadWithRetry(info.url, dest);
+    if (ok) { installed.push(t.name + ' ' + info.version); log('预装模组: ' + t.name + ' ' + info.version) }
+    else log('预装模组失败: ' + t.name);
+  }
+  return { success: true, installed, modsDir: ctx.modsDir, loader: ctx.loaderType, mcVersion: ctx.mcVersion };
+}
+
+ipcMain.handle('mods:preinstall', async (_, versionId) => {
+  try {
+    const ctx = getVersionModsContext(versionId);
+    if (!ctx.loaderType) return { success: false, error: '该版本没有安装模组加载器，无法加载皮肤模组' };
+    return await preinstallSkinMods(versionId, m => mainWindow?.webContents.send('mc:log', m));
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ── 无模组皮肤服务（authlib-injector + 本地 Yggdrasil）──
+const AUTHLIB_INJECTOR_VERSION = '1.2.8';
+const AUTHLIB_INJECTOR_URL = 'https://authlib-injector.yushi.moe/artifact/56/authlib-injector-1.2.8.jar';
+
+let skinService = null;
+
+function skinSha1(buf) { return crypto.createHash('sha1').update(buf).digest('hex') }
+
+function loadRemoteSkinCache() {
+  try { return JSON.parse(fs.readFileSync(path.join(MINECRAFT_DIR, 'wsl_skins', '.remote.json'), 'utf8')) } catch { return {} }
+}
+function saveRemoteSkinCache(cache) {
+  try {
+    fs.mkdirSync(path.join(MINECRAFT_DIR, 'wsl_skins'), { recursive: true });
+    fs.writeFileSync(path.join(MINECRAFT_DIR, 'wsl_skins', '.remote.json'), JSON.stringify(cache, null, 2), 'utf8');
+  } catch {}
+}
+
+function uploadSkinToMineSkin(buf) {
+  return new Promise((resolve) => {
+    try {
+      const boundary = '----WSL' + crypto.randomBytes(8).toString('hex');
+      const head = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="skin.png"\r\nContent-Type: image/png\r\n\r\n`);
+      const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+      const body = Buffer.concat([head, buf, tail]);
+      const req = https.request({
+        hostname: 'api.mineskin.org', path: '/generate/upload', method: 'POST',
+        headers: {
+          'Content-Type': 'multipart/form-data; boundary=' + boundary,
+          'Content-Length': body.length,
+          'User-Agent': 'WanshuangLauncher/3.0',
+        },
+        timeout: 20000,
+      }, res => {
+        let d = '';
+        res.on('data', c => d += c);
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            const url = j?.data?.texture?.url;
+            resolve(url && /^https:\/\//.test(url) ? url : null);
+          } catch { resolve(null) }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null) });
+      req.write(body);
+      req.end();
+    } catch { resolve(null) }
+  });
+}
+
+async function ensureRemoteSkin(buf) {
+  if (!buf) return null;
+  const cache = loadRemoteSkinCache();
+  const hash = skinSha1(buf);
+  if (cache[hash]?.url) return cache[hash].url;
+  const url = await uploadSkinToMineSkin(buf);
+  if (url) {
+    cache[hash] = { url, at: Date.now() };
+    saveRemoteSkinCache(cache);
+  }
+  return url;
+}
+
+function readLocalSkin(name) {
+  const safe = String(name).replace(/[\\/:*?"<>|]/g, '_');
+  const dirs = [
+    path.join(MINECRAFT_DIR, 'wsl_skins'),
+    path.join(MINECRAFT_DIR, 'CustomSkinLoader', 'LocalSkin', 'skins'),
+  ];
+  for (const dir of dirs) {
+    const p = path.join(dir, safe + '.png');
+    if (!fs.existsSync(p)) continue;
+    try {
+      const buf = fs.readFileSync(p);
+      if (buf.length < 100 || buf.readUInt32BE(0) !== 0x89504e47) continue;
+      let model = 'classic';
+      let remoteUrl = null;
+      const metaPath = path.join(dir, safe + '.json');
+      if (fs.existsSync(metaPath)) {
+        try {
+          const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+          if (meta.variant === 'slim') model = 'slim';
+          if (typeof meta.remoteUrl === 'string' && /^https:\/\//.test(meta.remoteUrl)) remoteUrl = meta.remoteUrl;
+        } catch {}
+      }
+      return { buf, model, remoteUrl };
+    } catch {}
+  }
+  return null;
+}
+
+async function fetchLittleSkinSkin(name) {
+  try {
+    const res = await net.fetch('https://littleskin.cn/csl/' + encodeURIComponent(name) + '.json');
+    if (!res.ok) return null;
+    const data = await res.json();
+    const url = data?.textures?.skin?.url;
+    if (!url) return null;
+    const skinRes = await net.fetch(url);
+    if (!skinRes.ok) return null;
+    const buf = Buffer.from(await skinRes.arrayBuffer());
+    if (buf.length < 100 || buf.readUInt32BE(0) !== 0x89504e47) return null;
+    return { buf, model: data.textures.skin.model === 'slim' ? 'slim' : 'classic' };
+  } catch { return null }
+}
+
+async function resolvePlayerSkin(name) {
+  if (skinService?.cache.has(name)) return skinService.cache.get(name);
+  let skin = readLocalSkin(name);
+  if (!skin) skin = await fetchLittleSkinSkin(name);
+  if (skin && skinService) skinService.cache.set(name, skin);
+  return skin;
+}
+
+async function ensureSkinService(sendLog) {
+  if (skinService) return skinService;
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const publicPem = publicKey.export({ type: 'spki', format: 'pem' });
+  const cache = new Map();
+  let player = null;
+
+  const server = http.createServer(async (req, res) => {
+    const sendJson = (obj, code = 200) => {
+      res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify(obj));
+    };
+    try {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      const p = u.pathname;
+      if (p === '/' || p === '/api/yggdrasil') {
+        return sendJson({
+          meta: { serverName: 'Wanshuang Launcher', implementationName: 'wanshuang-skin-service', implementationVersion: '1.2.0' },
+          skinDomains: ['127.0.0.1', 'localhost'],
+          signaturePublickey: publicPem,
+        });
+      }
+      const pm = p.match(/^\/(?:sessionserver\/session|session)\/minecraft\/profile\/([0-9a-fA-F-]+)$/);
+      if (pm) {
+        const id = pm[1].replace(/-/g, '').toLowerCase();
+        if (!player || id !== String(player.uuid).replace(/-/g, '').toLowerCase()) return sendJson({ error: 'Not found' }, 404);
+        const skin = await resolvePlayerSkin(player.name);
+        if (!skin) {
+          sendLog?.('Skin service: no skin for ' + player.name);
+          return sendJson({ id, name: player.name, properties: [] });
+        }
+        const remoteUrl = skin.remoteUrl || await ensureRemoteSkin(skin.buf);
+        const textures = {
+          timestamp: Date.now(),
+          profileId: id,
+          profileName: player.name,
+          signatureRequired: true,
+          textures: { SKIN: { url: remoteUrl || `${skinService.url}/skins/${encodeURIComponent(player.name)}.png`, metadata: { model: skin.model } } },
+        };
+        const value = Buffer.from(JSON.stringify(textures)).toString('base64');
+        const signature = crypto.createSign('SHA1').update(value).sign(privateKey, 'base64');
+        sendLog?.('Skin service: profile served for ' + player.name);
+        return sendJson({ id, name: player.name, properties: [{ name: 'textures', value, signature }] });
+      }
+      if (p.startsWith('/skins/')) {
+        const name = decodeURIComponent(p.slice(7)).replace(/\.png$/i, '');
+        const skin = await resolvePlayerSkin(name);
+        if (skin) {
+          sendLog?.('Skin service: skin served for ' + name);
+          res.writeHead(200, { 'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*' });
+          return res.end(skin.buf);
+        }
+        res.writeHead(404); return res.end();
+      }
+      sendJson({ error: 'Not found' }, 404);
+    } catch (e) {
+      try { sendJson({ error: e.message }, 500) } catch {}
+    }
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  skinService = {
+    server,
+    url: 'http://127.0.0.1:' + server.address().port,
+    cache,
+    setPlayer(p) { player = p },
+  };
+  sendLog?.('Skin service started on ' + skinService.url);
+  return skinService;
+}
+
+async function ensureAuthlibInjector(sendLog) {
+  const dir = path.join(app.getPath('userData'), 'skin-agent');
+  fs.mkdirSync(dir, { recursive: true });
+  const dest = path.join(dir, 'authlib-injector-' + AUTHLIB_INJECTOR_VERSION + '.jar');
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 100000) return dest;
+  sendLog?.('Downloading authlib-injector ' + AUTHLIB_INJECTOR_VERSION + '...');
+  const ok = await downloadWithRetry(AUTHLIB_INJECTOR_URL, dest);
+  if (!ok || !fs.existsSync(dest) || fs.statSync(dest).size < 100000) throw new Error('authlib-injector 下载失败');
+  return dest;
+}
 
 // ── Game Launch ──
 async function resolveVersion(versionId) {
@@ -947,18 +1904,22 @@ function getNativeKey(lib) {
 function isNative(lib) { return getNativeKey(lib) !== null }
 function getNativeDownload(lib) { const key = getNativeKey(lib); return key ? lib.downloads?.classifiers?.[key] : null }
 
-async function resolveLibraries(versionMeta, onLog) {
+async function resolveLibraries(versionMeta, onLog, onProgress) {
   const classpath = [];
-  for (const lib of (versionMeta.libraries || [])) {
-    if (!ruleMatches(lib) || isNative(lib)) continue;
+  const libs = (versionMeta.libraries || []).filter(lib => ruleMatches(lib) && !isNative(lib) && getLibraryPath(lib));
+  const clientPath = path.join(MINECRAFT_DIR, 'versions', versionMeta.id, versionMeta.id + '.jar');
+  const total = libs.length + 1;
+  let done = 0;
+  const tick = () => { done++; if (onProgress) onProgress(done, total) };
+  for (const lib of libs) {
     const libPath = getLibraryPath(lib);
-    if (!libPath) continue;
     if (fs.existsSync(libPath)) { classpath.push(libPath) }
     else { const url = getLibraryUrl(lib); if (url) { onLog('Downloading library: ' + lib.name); const ok = await downloadWithRetry(url, libPath); if (ok) classpath.push(libPath) } }
+    tick();
   }
-  const clientPath = path.join(MINECRAFT_DIR, 'versions', versionMeta.id, versionMeta.id + '.jar');
   if (fs.existsSync(clientPath)) { classpath.push(clientPath) }
   else if (versionMeta.downloads?.client?.url) { onLog('Downloading client: ' + versionMeta.id); await downloadWithRetry(versionMeta.downloads.client.url, clientPath); classpath.push(clientPath) }
+  tick();
   return classpath;
 }
 
@@ -1014,13 +1975,13 @@ const ASSET_CACHE_PATH = path.join(MINECRAFT_DIR, 'wsl_asset_cache.json');
 function getCachedAssetIndex() { try { return JSON.parse(fs.readFileSync(ASSET_CACHE_PATH, 'utf8')) } catch { return {} } }
 function saveCachedAssetIndex(index) { try { fs.writeFileSync(ASSET_CACHE_PATH, JSON.stringify(index), 'utf8') } catch {} }
 
-async function resolveAssets(assetIndexData, onLog) {
+async function resolveAssets(assetIndexData, onLog, onProgress) {
   if (!assetIndexData?.objects) return;
   const objects = assetIndexData.objects;
   const keys = Object.keys(objects);
   const total = keys.length;
   const cached = getCachedAssetIndex();
-  if (cached.id === assetIndexData.id && cached.total === total) { onLog('Assets already verified (' + total + ' files)'); return true }
+  if (cached.id === assetIndexData.id && cached.total === total) { onLog('Assets already verified (' + total + ' files)'); if (onProgress) onProgress(total, total); return true }
   let downloaded = 0, checked = 0;
   onLog('Verifying ' + total + ' assets...');
   for (let i = 0; i < total; i += 20) {
@@ -1031,6 +1992,7 @@ async function resolveAssets(assetIndexData, onLog) {
     }));
     checked += batch.length;
     if (checked % 500 === 0 || checked === total) { mainWindow?.webContents.send('mc:progress', Math.round((checked / total) * 100)) }
+    if (onProgress) onProgress(checked, total);
   }
   saveCachedAssetIndex({ id: assetIndexData.id, total });
   if (downloaded > 0) onLog('Assets: ' + downloaded + ' downloaded');
@@ -1131,11 +2093,29 @@ function prepareOptionsTxt(gameDir, sendLog) {
 
 ipcMain.handle('mc:launch', async (_, config) => {
   const { version, javaPath, username, jvmArgs, minRam, maxRam, resWidth, resHeight, account } = config;
-  const java = javaPath || 'java';
   const sendLog = (msg) => mainWindow?.webContents.send('mc:log', msg);
   try {
     sendLog('Resolving version: ' + version);
     const versionMeta = await resolveVersion(version);
+    // 优先使用版本 JSON 声明的 Java 主版本（如 26.2 需要 Java 25）
+    const requiredMajor = Number(versionMeta?.javaVersion?.majorVersion) || requiredJavaMajor(baseGameVersionOf(version));
+    let java = javaPath;
+    let configuredMajor = 0;
+    if (java && java !== 'java' && fs.existsSync(java)) {
+      configuredMajor = (await probeJavaMajor(java)) || javaMajorFromPath(java);
+    }
+    if (requiredMajor && (!configuredMajor || configuredMajor < requiredMajor)) {
+      const match = await chooseJavaForMajor(requiredMajor);
+      if (match) { java = match.path; sendLog('Using Java ' + match.major + ': ' + java) }
+      else {
+        sendLog('Missing Java ' + requiredMajor + ' required by this version');
+        return { success: false, needJava: requiredMajor, error: '此版本需要 Java ' + requiredMajor + '，当前未安装，请先下载' };
+      }
+    } else if (!configuredMajor) {
+      const best = await chooseJava(baseGameVersionOf(version));
+      if (best?.path) java = best.path;
+    }
+    if (!java) java = 'java';
     sendLog('Checking libraries...');
     const classpath = await resolveLibraries(versionMeta, sendLog);
     sendLog('Checking asset index...');
@@ -1145,24 +2125,41 @@ ipcMain.handle('mc:launch', async (_, config) => {
     const nativesDir = await extractNatives(versionMeta, sendLog);
     const cp = classpath.join(';');
     const mainClass = versionMeta.mainClass || 'net.minecraft.client.main.Main';
-    const gameDir = MINECRAFT_DIR;
+    // 整合包实例使用独立目录，普通版本仍使用全局 .minecraft
+    const versionDir = path.join(MINECRAFT_DIR, 'versions', version);
+    const gameDir = fs.existsSync(path.join(versionDir, 'wsl-pack.json')) ? versionDir : MINECRAFT_DIR;
     const assetIndex = versionMeta.assetIndex?.id || 'legacy';
     const assetsDir = path.join(MINECRAFT_DIR, 'assets');
     const uuid = account?.uuid || '00000000-0000-0000-0000-000000000000';
     const token = account?.token || 'offline';
-    const userType = account?.type === 'microsoft' ? 'msa' : 'offline';
+    const userType = account?.type === 'microsoft' ? 'msa' : 'legacy';
     const versionType = 'release';
     const extraJvmArgs = jvmArgs ? jvmArgs.split(' ').filter(Boolean) : [];
     const rw = parseInt(resWidth); const rh = parseInt(resHeight);
-    const subs = { auth_player_name: username, version_name: version, game_directory: gameDir, assets_root: assetsDir, assets_index_name: assetIndex, auth_uuid: uuid, auth_access_token: token, user_type: userType, version_type: versionType, auth_session: token, game_assets: assetsDir, user_properties: '{}', natives_directory: nativesDir, classpath: cp, launcher_name: 'wanshuang', launcher_version: '3.0', resolution_width: rw > 0 && !isNaN(rw) ? String(rw) : '854', resolution_height: rh > 0 && !isNaN(rh) ? String(rh) : '480' };
+    const subs = { auth_player_name: username, version_name: version, game_directory: gameDir, assets_root: assetsDir, assets_index_name: assetIndex, auth_uuid: uuid, auth_access_token: token, user_type: userType, version_type: versionType, auth_session: token, game_assets: assetsDir, user_properties: '{}', natives_directory: nativesDir, library_directory: path.join(MINECRAFT_DIR, 'libraries'), classpath_separator: path.delimiter, classpath: cp, launcher_name: 'wanshuang', launcher_version: '3.0', resolution_width: rw > 0 && !isNaN(rw) ? String(rw) : '854', resolution_height: rh > 0 && !isNaN(rh) ? String(rh) : '480' };
     const mcArgs = cleanLaunchArgs(resolveMinecraftArgs(versionMeta, subs, false));
     const profileJvmArgs = resolveJvmArgs(versionMeta, subs);
-    const forgeLaunchTarget = mcArgs.find(a => a === 'forge_client' || a === 'forge_server');
+    const forgeTargets = ['forgeclient', 'forge_client', 'forgeserver', 'forge_server'];
+    const forgeLaunchTarget = mcArgs.find(a => forgeTargets.includes(a));
     if (forgeLaunchTarget && !mcArgs.includes('--launchTarget')) {
-      mcArgs.unshift('--launchTarget', forgeLaunchTarget);
+      mcArgs.splice(mcArgs.indexOf(forgeLaunchTarget), 0, '--launchTarget');
+    }
+    // 离线账号：authlib-injector + 本地皮肤服务（无需安装模组）
+    let skinAgentArg = null;
+    if (account?.type !== 'microsoft') {
+      try {
+        const agentPath = await ensureAuthlibInjector(sendLog);
+        const svc = await ensureSkinService(sendLog);
+        svc.setPlayer({ name: username, uuid });
+        svc.cache.delete(username);
+        skinAgentArg = '-javaagent:' + agentPath + '=' + svc.url;
+        sendLog('Skin agent: ' + svc.url);
+      } catch (e) {
+        sendLog('Skin service disabled: ' + e.message);
+      }
     }
     prepareOptionsTxt(gameDir, sendLog);
-    const jvmArgsFinal = [`-Xmx${maxRam}M`, `-Xms${minRam}M`, `-Djava.library.path=${nativesDir}`, '-Dminecraft.launcher.brand=wanshuang', '-Dminecraft.launcher.version=3.0', '-Dlog4j.configurationFile=log4j2.xml', ...profileJvmArgs, '-cp', cp, ...extraJvmArgs, mainClass, ...mcArgs].filter(Boolean);
+    const jvmArgsFinal = [`-Xmx${maxRam}M`, `-Xms${minRam}M`, `-Djava.library.path=${nativesDir}`, '-Dminecraft.launcher.brand=wanshuang', '-Dminecraft.launcher.version=1.2.0', '-Dlog4j.configurationFile=log4j2.xml', ...profileJvmArgs, ...(skinAgentArg ? [skinAgentArg] : []), '-cp', cp, ...extraJvmArgs, mainClass, ...mcArgs].filter(Boolean);
     sendLog('Launching: ' + java);
     sendLog('JVM: -Xmx' + maxRam + 'M -Xms' + minRam + 'M -Djava.library.path=' + nativesDir + (profileJvmArgs.length ? ' | profile JVM: ' + profileJvmArgs.join(' ') : ''));
     sendLog('Main class: ' + mainClass);
@@ -1178,27 +2175,90 @@ ipcMain.handle('mc:launch', async (_, config) => {
 });
 
 // ── Java Download ──
-const JAVA_RUNTIME_DIR = path.join(__dirname, 'runtime', 'java');
-ipcMain.handle('mc:downloadJava', async (event) => {
+// 清华镜像目录中取最新的 JRE zip
+async function findTunaJavaZip(major, arch) {
+  try {
+    const html = await httpGet(`https://mirrors.tuna.tsinghua.edu.cn/Adoptium/${major}/jre/${arch}/windows/`, null, 15000);
+    if (typeof html !== 'string') return null;
+    const files = (html.match(/OpenJDK\d+U-jre_[^"'<>\s]+\.zip/g) || []);
+    if (!files.length) return null;
+    const unique = [...new Set(files)].sort();
+    return `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/${major}/jre/${arch}/windows/${unique[unique.length - 1]}`;
+  } catch { return null }
+}
+
+ipcMain.handle('mc:downloadJava', async (_, opts) => {
   const sendLog = (msg) => mainWindow?.webContents.send('mc:log', msg);
   const sendProgress = (pct, speed, filename) => mainWindow?.webContents.send('mc:javaDlProgress', { pct, speed, filename });
+  const mcVersion = typeof opts === 'string' ? opts : opts?.mcVersion;
+  const requestedMajor = (opts && typeof opts === 'object' && opts.major) ? Number(opts.major) : 0;
+  const major = requestedMajor || requiredJavaMajor(mcVersion) || 17;
   try {
-    const arch = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'aarch64' : 'x64';
-    const javaUrl = `https://api.adoptium.net/v3/binary/latest/17/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`;
-    sendLog('Downloading Java 17 from Adoptium...');
+    // 已有可用的 Java 时直接复用
+    const existing = await chooseJavaForMajor(major);
+    const reusable = existing && (major === 8 ? existing.major === 8 : true);
+    if (reusable) {
+      sendLog('Reuse existing Java ' + existing.major + ': ' + existing.path);
+      return { success: true, path: existing.path, major: existing.major, reused: true };
+    }
+
+    const arch = process.arch === 'arm64' ? 'aarch64' : 'x64';
+    const urls = [];
+    const tuna = await findTunaJavaZip(major, arch);
+    if (tuna) urls.push(tuna);
+    urls.push(`https://api.adoptium.net/v3/binary/latest/${major}/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`);
+
+    sendLog('Downloading Java ' + major + ' ...');
     if (!fs.existsSync(JAVA_RUNTIME_DIR)) fs.mkdirSync(JAVA_RUNTIME_DIR, { recursive: true });
-    const zipPath = path.join(JAVA_RUNTIME_DIR, 'java.zip');
-    await downloadWithRetry(javaUrl, zipPath, 3, (pct) => sendProgress(pct, '', ''));
+    const zipPath = path.join(JAVA_RUNTIME_DIR, 'java-' + major + '.zip');
+
+    let downloaded = false;
+    for (const url of urls) {
+      sendLog('Java source: ' + url);
+      let lastTime = Date.now(); let lastBytes = 0;
+      const ok = await downloadWithRetry(url, zipPath, 2, (dl, total) => {
+        const pct = total > 0 ? Math.round((dl / total) * 100) : 0;
+        const now = Date.now();
+        let speedText = '';
+        if (now - lastTime >= 500) {
+          const bps = (dl - lastBytes) / ((now - lastTime) / 1000);
+          speedText = bps > 1024 * 1024 ? (bps / 1024 / 1024).toFixed(1) + ' MB/s' : Math.max(1, Math.round(bps / 1024)) + ' KB/s';
+          lastTime = now; lastBytes = dl;
+        }
+        sendProgress(Math.min(pct, 99), speedText, 'Java ' + major);
+      });
+      if (ok && fs.existsSync(zipPath) && fs.statSync(zipPath).size > 1024 * 1024) { downloaded = true; break }
+      try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath) } catch {}
+    }
+    if (!downloaded) throw new Error('Java 下载失败，请检查网络后重试');
+
     sendProgress(100, '', '正在解压...');
-    execSync(`powershell -c "Expand-Archive -Path '${zipPath}' -DestinationPath '${JAVA_RUNTIME_DIR}' -Force 2>$null"`, { timeout: 60000 });
-    fs.unlinkSync(zipPath);
-    const dirs = fs.readdirSync(JAVA_RUNTIME_DIR).filter(d => fs.statSync(path.join(JAVA_RUNTIME_DIR, d)).isDirectory());
-    const javaBin = dirs.length > 0 ? path.join(JAVA_RUNTIME_DIR, dirs[0], 'bin', 'javaw.exe') : '';
+    sendLog('Extracting Java ' + major + ' ...');
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(JAVA_RUNTIME_DIR, true);
+    try { fs.unlinkSync(zipPath) } catch {}
+
+    let javaBin = '';
+    for (const entry of fs.readdirSync(JAVA_RUNTIME_DIR)) {
+      const dir = path.join(JAVA_RUNTIME_DIR, entry);
+      try {
+        if (!fs.statSync(dir).isDirectory()) continue;
+        const bin = path.join(dir, 'bin', 'javaw.exe');
+        if (fs.existsSync(bin) && entry.includes(String(major))) { javaBin = bin; break }
+      } catch {}
+    }
+    if (!javaBin) {
+      for (const entry of fs.readdirSync(JAVA_RUNTIME_DIR)) {
+        const bin = path.join(JAVA_RUNTIME_DIR, entry, 'bin', 'javaw.exe');
+        if (fs.existsSync(bin)) { javaBin = bin; break }
+      }
+    }
     if (javaBin && fs.existsSync(javaBin)) {
       sendLog('Java installed: ' + javaBin);
-      return { success: true, path: javaBin };
+      sendProgress(100, '完成', 'Java ' + major);
+      return { success: true, path: javaBin, major };
     }
-    return { success: false, error: 'Extraction failed' };
+    return { success: false, error: '解压失败，未找到 javaw.exe' };
   } catch (e) {
     sendLog('Java download error: ' + e.message);
     return { success: false, error: e.message };
@@ -1458,6 +2518,214 @@ ipcMain.handle('et:qr', async (_, text) => {
   } catch { return null }
 });
 
+// ── Music Search ──
+ipcMain.handle('music:search', async (_, { query, platform }) => {
+  if (!query) return [];
+  const hdrs = { 'User-Agent': 'Mozilla/5.0' };
+  let url;
+  try {
+    let data;
+    if (platform === 'bilibili') {
+      data = await new Promise((resolve, reject) => {
+        const req = net.request(`https://api.bilibili.com/x/web-interface/search/all/v2?keyword=${encodeURIComponent(query)}`);
+        req.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        req.setHeader('Referer', 'https://www.bilibili.com');
+        let d = '';
+        req.on('response', (res) => { res.setEncoding('utf8'); res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)) } catch { reject(new Error('parse fail')) } }) });
+        req.on('error', reject);
+        req.end();
+      });
+      if (data && data.code === 0 && data.data && data.data.result) {
+        const videos = data.data.result.find(r => r.type === 'video');
+        if (videos && videos.data) {
+          return videos.data.slice(0, 10).map(v => ({
+            id: v.aid || v.bvid, name: (v.title || '').replace(/<[^>]+>/g, ''), artist: v.author || '', album: '', duration: v.duration || 0, platform: 'bilibili',
+          }));
+        }
+      }
+    } else {
+      data = await new Promise((resolve, reject) => {
+        const req = net.request(`https://music.163.com/api/search/get?s=${encodeURIComponent(query)}&type=1&limit=10&offset=0`);
+        req.setHeader('User-Agent', 'Mozilla/5.0');
+        req.setHeader('Referer', 'https://music.163.com');
+        let d = '';
+        req.on('response', (res) => { res.setEncoding('utf8'); res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)) } catch { reject(new Error('parse fail')) } }) });
+        req.on('error', reject);
+        req.end();
+      });
+      if (data && data.result && data.result.songs) {
+        return data.result.songs.slice(0, 10).map(s => ({
+          id: s.id, name: s.name, artist: (s.artists || []).map(a => a.name).join(', '), album: s.album ? s.album.name : '', duration: s.duration || 0, platform: 'netease',
+        }));
+      }
+    }
+  } catch {}
+  return [];
+});
 
+// ── Music Module ──
+let musicPollTimer = null;
 
+function getMediaSessionPath() {
+  const pkg = path.join(process.resourcesPath || '', 'media-session', 'media-session.exe');
+  const dev = path.join(app.getAppPath(), 'media-session', 'media-session.exe');
+  return fs.existsSync(pkg) ? pkg : dev;
+}
+
+function pollMediaSessions() {
+  const exe = getMediaSessionPath();
+  if (!fs.existsSync(exe)) return;
+  try {
+    const out = execSync(`"${exe}"`, { encoding: 'utf8', timeout: 5000 });
+    const sessions = [];
+    for (const line of out.split('\n')) {
+      const t = line.trim();
+      if (!t || t.startsWith('NONE')) continue;
+      const p = t.split('|');
+      if (p[0] === 'S' && p.length >= 8) {
+        sessions.push({
+          sourceId: p[7] || '',
+          title: p[1] || '',
+          artist: p[2] || '',
+          album: p[3] || '',
+          status: p[4] || 'Unknown',
+          position: parseFloat(p[5]) || 0,
+          endTime: parseFloat(p[6]) || 0,
+        });
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('music:info', { sessions });
+    }
+  } catch (e) {
+    console.error('[music] poll error:', e.message);
+  }
+}
+
+ipcMain.handle('music:start', () => {
+  if (musicPollTimer) return;
+  pollMediaSessions();
+  musicPollTimer = setInterval(pollMediaSessions, 2000);
+});
+
+ipcMain.handle('music:stop', () => {
+  if (musicPollTimer) {
+    clearInterval(musicPollTimer);
+    musicPollTimer = null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('music:info', { sessions: [] });
+  }
+});
+
+ipcMain.handle('music:control', async (_, action) => {
+  const exe = getMediaSessionPath();
+  if (!fs.existsSync(exe)) return false;
+  try {
+    execSync(`"${exe}" --control "${action}"`, { encoding: 'utf8', timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+// ══════════════════════════ IM Module ══════════════════════════
+let imSocket = null;
+let imToken = null;
+let imMe = null;
+
+function imSendToRenderer(event, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('im:' + event, data);
+}
+
+function imConnect() {
+  if (imSocket) { try { imSocket.disconnect() } catch {} }
+  imSocket = io(IM_SERVER_URL, { auth: { token: imToken }, reconnection: true, reconnectionAttempts: 10, reconnectionDelay: 2000 });
+
+  imSocket.on('connect', () => imSendToRenderer('connected', {}));
+  imSocket.on('disconnect', () => imSendToRenderer('disconnected', {}));
+  imSocket.on('connect_error', (e) => imSendToRenderer('error', { message: e.message }));
+  imSocket.on('kicked', () => imSendToRenderer('kicked', {}));
+
+  for (const ev of ['friends:status', 'friend:status', 'friend:new', 'friend:removed', 'chat:message', 'chat:unread']) {
+    imSocket.on(ev, (d) => imSendToRenderer(ev, d));
+  }
+}
+
+function imSaveToken(token, me) {
+  imToken = token; imMe = me;
+  try { fs.writeFileSync(IM_TOKEN_FILE, JSON.stringify({ token, me }), 'utf8') } catch {}
+}
+
+function imLoadToken() {
+  try {
+    const d = JSON.parse(fs.readFileSync(IM_TOKEN_FILE, 'utf8'));
+    imToken = d.token; imMe = d.me;
+    return d;
+  } catch { return null }
+}
+
+ipcMain.handle('im:register', async (_, { username, password }) => {
+  try {
+    const res = await new Promise((resolve, reject) => {
+      const req = net.request({ method: 'POST', url: IM_SERVER_URL + '/api/register' });
+      req.setHeader('Content-Type', 'application/json');
+      let d = '';
+      req.on('response', (r) => { r.setEncoding('utf8'); r.on('data', c => d += c); r.on('end', () => { try { resolve(JSON.parse(d)) } catch { reject(new Error(d)) } }) });
+      req.on('error', reject);
+      req.end(JSON.stringify({ username, password }));
+    });
+    if (res.ok) imSaveToken(res.token, { id: res.id, username: res.username });
+    return res;
+  } catch (e) { return { ok: false, error: e.message } }
+});
+
+ipcMain.handle('im:login', async (_, { username, password }) => {
+  try {
+    const res = await new Promise((resolve, reject) => {
+      const req = net.request({ method: 'POST', url: IM_SERVER_URL + '/api/login' });
+      req.setHeader('Content-Type', 'application/json');
+      let d = '';
+      req.on('response', (r) => { r.setEncoding('utf8'); r.on('data', c => d += c); r.on('end', () => { try { resolve(JSON.parse(d)) } catch { reject(new Error(d)) } }) });
+      req.on('error', reject);
+      req.end(JSON.stringify({ username, password }));
+    });
+    if (res.ok) imSaveToken(res.token, { id: res.id, username: res.username });
+    return res;
+  } catch (e) { return { ok: false, error: e.message } }
+});
+
+ipcMain.handle('im:logout', () => {
+  imToken = null; imMe = null;
+  if (imSocket) { try { imSocket.disconnect() } catch {}; imSocket = null }
+  try { fs.unlinkSync(IM_TOKEN_FILE) } catch {}
+  return true;
+});
+
+ipcMain.handle('im:connect', () => {
+  const saved = imLoadToken();
+  if (!saved || !saved.token) return { ok: false, error: '未登录' };
+  imConnect();
+  return { ok: true, me: imMe };
+});
+
+ipcMain.handle('im:me', () => imMe);
+ipcMain.handle('im:disconnect', () => { if (imSocket) { imSocket.disconnect(); imSocket = null } return true });
+
+function imCall(event, data) {
+  return new Promise((resolve) => {
+    if (!imSocket || !imSocket.connected) return resolve({ ok: false, error: '未连接' });
+    const timeout = setTimeout(() => resolve({ ok: false, error: '超时' }), 8000);
+    imSocket.emit(event, data, (res) => { clearTimeout(timeout); resolve(res) });
+  });
+}
+
+ipcMain.handle('im:friends:list', async () => await imCall('friends:list'));
+ipcMain.handle('im:friends:search', async (_, username) => await imCall('friends:search', { username }));
+ipcMain.handle('im:friends:add', async (_, username) => await imCall('friends:add', { username }));
+ipcMain.handle('im:friends:remove', async (_, id) => await imCall('friends:remove', { id }));
+ipcMain.handle('im:chat:send', async (_, { to, text }) => await imCall('chat:send', { to, text }));
+ipcMain.handle('im:chat:history', async (_, withId) => await imCall('chat:history', { with: withId }));
+ipcMain.handle('im:chat:read', async (_, withId) => await imCall('chat:read', { with: withId }));
+ipcMain.handle('im:chat:unread', async () => await imCall('chat:unread'));
 

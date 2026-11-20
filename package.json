@@ -1,13 +1,15 @@
 {
   "name": "wanshuang-launcher",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Wanshuang Launcher",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win portable",
-    "build:installer": "electron-builder --win nsis",
-    "build:dir": "electron-builder --win portable"
+    "build": "npm run build:media-session && electron-builder --win portable",
+    "build:installer": "npm run build:media-session && electron-builder --win nsis",
+    "build:dir": "npm run build:media-session && electron-builder --win portable",
+    "build:appx": "npm run build:media-session && electron-builder --win appx --x64",
+    "build:media-session": "cd . && \"C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe\" /nologo /reference:\"C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\System.Runtime.WindowsRuntime.dll\" /reference:\"C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\System.Runtime.InteropServices.WindowsRuntime.dll\" /out:\"media-session\\media-session.exe\" \"media-session\\media-session.cs\""
   },
   "build": {
     "appId": "com.wanshuang.launcher",
@@ -25,18 +27,45 @@
       "src/**/*",
       "splash/**/*",
       "bot/**/*",
-
       "package.json"
     ],
     "win": {
       "icon": "public/app.ico",
+      "signAndEditExecutable": false,
+      "signtoolOptions": {
+        "certificateFile": "build/cert.pfx",
+        "certificatePassword": "wsl@2026",
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      },
       "target": [
         {
           "target": "nsis",
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "appx",
+          "arch": [
+            "x64"
+          ]
         }
+      ]
+    },
+    "appx": {
+      "applicationId": "WanshuangLauncher",
+      "identityName": "9E30587C5F824CAFADF8333E505BBEDA.WanshuangLauncher",
+      "publisher": "CN=9E30587C-5F82-4CAF-ADF8-333E505BBEDA",
+      "publisherDisplayName": "晚霜工作室",
+      "displayName": "Wanshuang Launcher",
+      "backgroundColor": "#05050a",
+      "showNameOnTiles": true,
+      "languages": [
+        "zh-CN",
+        "en-US"
       ]
     },
     "nsis": {
@@ -49,12 +78,20 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Wanshuang Launcher",
-      "artifactName": "WanshuangLauncher-Setup-1.1.0.exe"
+      "artifactName": "WanshuangLauncher-Setup-1.2.0.exe"
     },
     "extraResources": [
       {
         "from": "terracotta-bin",
         "to": "terracotta"
+      },
+      {
+        "from": "media-session",
+        "to": "media-session"
+      },
+      {
+        "from": "music-bridge.ps1",
+        "to": "music-bridge.ps1"
       }
     ]
   },
@@ -71,6 +108,7 @@
     "mineflayer-pvp": "^1.3.2",
     "node-fetch": "2.x",
     "qrcode": "^1.5.4",
+    "socket.io-client": "^4.8.3",
     "tslib": "^2.6.2",
     "ws": "^8.21.1"
   }

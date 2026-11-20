@@ -19,6 +19,7 @@ const I18N = {
     importBg:'导入背景',clearBg:'清除背景',
     lang:'语言',openFolder:'打开文件夹',modToggleOn:'已启用',modToggleOff:'已禁用',
     all:'全部',modpack:'整合包',shader:'光影',resourcepack:'资源包',world:'世界',
+    importPack:'导入整合包',importing:'正在导入...',importDone:'整合包导入完成',importFail:'导入失败',importOnlyModrinth:'目前仅支持导入 Modrinth 整合包',
     searchHint:'输入关键词搜索资源',back:'返回',downloadedVersions:'已下载版本',
     noDownloaded:'暂无已下载的版本',modManage:'模组管理',accountManage:'账号管理',
     addOffline:'添加离线',downloads:'下载',dlEmpty:'无下载任务',startLaunch:'正在启动',
@@ -33,6 +34,22 @@ const I18N = {
     javaDlTitle:'未检测到 Java 运行环境',javaDlMsg:'运行我的世界需要 Java，是否自动下载配套 Java 环境？',javaDlAuto:'自动下载 Java',javaDlBrowse:'手动选择 javaw.exe',javaDlLater:'稍后再说',javaDlRetry:'重试',javaDlDone:'Java 下载完成',javaDlFail:'下载失败',
     loaders:'可用加载器',noLoader:'暂无适配加载器',dlLoader:'下载安装器',
     loadMore:'▼ 下拉加载更多',countVer:'版本',noDesc:'暂无介绍',translate:'翻译介绍',translateDone:'翻译完成',
+    packPreviewTitle:'整合包内容确认',packConfirm:'同意并下载',packFiles:'文件数量',packSize:'总大小',
+    packLoader:'加载器',packOverrides:'覆盖文件',packVanilla:'原版（无加载器）',packNoFiles:'无需要下载的文件',
+    packMore:'仅显示前 500 个文件',packPreparing:'正在解析整合包...',
+    skins:'皮肤库',skinLoading:'正在加载皮肤...',skinMore:'加载更多',skinPreview:'皮肤预览',skinVariant:'模型',
+    applySkin:'应用皮肤',skinApplied:'皮肤已应用',skinApplyFail:'皮肤应用失败',skinNeedAccount:'请先选择账号',
+    skinHint:'选择一个皮肤后点击应用；离线账号通过内置皮肤服务生效，无需安装模组',
+    importSkin:'导入皮肤',skinLocalName:'本地皮肤',skinInvalidSize:'请选择 64x64、64x32 或等比例高清 PNG 皮肤',
+    skinHintOnline:'当前为微软账号，应用后会直接同步到游戏',
+    skinHintLocal:'离线账号：皮肤保存在本地并生成在线皮肤地址（MineSkin 匿名上传），无需安装模组',
+    joinChannel:'加入频道',channelHint:'扫码加入频道，反馈问题与交流',
+    preinstallMods:'预装皮肤模组',preinstallRunning:'正在预装皮肤模组...',preinstallDone:'预装完成',
+    preinstallNone:'皮肤模组已是最新或无需预装',preinstallFail:'预装模组失败',preinstallNoLoader:'该版本没有模组加载器',
+    checkUpdate:'检查更新',newVersion:'发现新版本',updateNow:'前往下载',
+    updateLatest:'当前已是最新版本',updateFail:'检查更新失败',updateNotes:'更新内容',
+    newVersionMsg:(latest,current)=>'发现新版本 '+latest+'（当前 '+current+'），是否前往下载？',
+    clearCache:'清除账号缓存',javaReused:'已使用现有 Java',javaDlNeed:'正在准备 Java',
 
     acctNotSelected:'账号未选择',acctNoSelectBody:'当前未选择任何账号，是否以未登录匿名状态启动游戏？',
     acctNoSelectNote:'未登录模式下大部分多人联机服务器无法正常进入',
@@ -58,6 +75,7 @@ const I18N = {
     importBg:'Import Background',clearBg:'Clear Background',
     lang:'Language',openFolder:'Open Folder',modToggleOn:'Enabled',modToggleOff:'Disabled',
     all:'All',modpack:'Modpack',shader:'Shader',resourcepack:'Resource Pack',world:'World',
+    importPack:'Import Modpack',importing:'Importing...',importDone:'Modpack imported',importFail:'Import failed',importOnlyModrinth:'Only Modrinth modpacks are supported for now',
     searchHint:'Search resources',back:'Back',downloadedVersions:'Downloaded Versions',
     noDownloaded:'No downloaded versions',modManage:'Mods',accountManage:'Account Management',
     addOffline:'Add Offline',downloads:'Downloads',dlEmpty:'No downloads',
@@ -74,6 +92,22 @@ const I18N = {
     javaDlTitle:'Java not found',javaDlMsg:'Minecraft requires Java. Auto-download the matching Java?',javaDlAuto:'Download Java',javaDlBrowse:'Browse javaw.exe',javaDlLater:'Later',javaDlRetry:'Retry',javaDlDone:'Java download complete',javaDlFail:'Download failed',
     loaders:'Loaders',noLoader:'No loader available',dlLoader:'Download Installer',
     loadMore:'▼ Scroll to load more',countVer:'versions',noDesc:'No description',translate:'Translate',translateDone:'Translated',
+    packPreviewTitle:'Modpack Contents',packConfirm:'Accept & Download',packFiles:'Files',packSize:'Total size',
+    packLoader:'Loader',packOverrides:'Override files',packVanilla:'Vanilla (no loader)',packNoFiles:'Nothing to download',
+    packMore:'Showing first 500 files only',packPreparing:'Parsing modpack...',
+    skins:'Skins',skinLoading:'Loading skins...',skinMore:'Load more',skinPreview:'Skin Preview',skinVariant:'Model',
+    applySkin:'Apply Skin',skinApplied:'Skin applied',skinApplyFail:'Failed to apply skin',skinNeedAccount:'Select an account first',
+    skinHint:'Pick a skin and click Apply. Offline accounts use the built-in skin service, no mod required',
+    importSkin:'Import Skin',skinLocalName:'Local skin',skinInvalidSize:'Please choose a 64x64, 64x32 or proportional HD PNG skin',
+    skinHintOnline:'Microsoft account: the skin will be uploaded to Minecraft directly',
+    skinHintLocal:'Offline account: skin is stored locally and published to MineSkin for a texture URL (no mod needed)',
+    joinChannel:'Join Channel',channelHint:'Scan to join the channel for support and discussion',
+    preinstallMods:'Preinstall Skin Mods',preinstallRunning:'Preinstalling skin mods...',preinstallDone:'Preinstall complete',
+    preinstallNone:'Skin mods are up to date or not required',preinstallFail:'Preinstall failed',preinstallNoLoader:'This version has no mod loader',
+    checkUpdate:'Check Update',newVersion:'New version available',updateNow:'Download',
+    updateLatest:'Already up to date',updateFail:'Update check failed',updateNotes:'Release notes',
+    newVersionMsg:(latest,current)=>'New version '+latest+' (current '+current+'). Open download page?',
+    clearCache:'Clear account cache',javaReused:'Using existing Java',javaDlNeed:'Preparing Java',
 
     acctNotSelected:'No Account Selected',acctNoSelectBody:'No account selected. Launch as anonymous offline player?',
     acctNoSelectNote:'Offline mode cannot access most multiplayer servers',
@@ -317,6 +351,7 @@ function switchPage(page) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   if (page === 'game-manage') { loadLocalVersions(); loadMods() }
   if (page === 'resources') { resPage = 0; resDataAll = []; resHasMore = true; loadResources(true) }
+  if (page === 'skins') { if (skinList.length === 0) loadSkins(true) }
   if (page === 'mirror') loadMirrors();
   if (page === 'bot') loadApiConfig();
   if (page === 'settings') {}
@@ -478,11 +513,17 @@ function doLaunch() {
   saveSettings();
   log(t('startLaunch')+' '+verId+'...');
   log('[Launch] username=' + launchName + ' uuid=' + (currentAccount?.uuid || 'offline'));
-  window.wsl.launchGame(config).then(result => {
-    if (result.success) log(t('launchDone')+' (PID: '+result.pid+')');
-    else { log(t('launchFail')+': '+(result.error||t('unknownErr'))); toast(t('launchErr')+': '+(result.error||t('unknownErr')), 'error') }
-  }).catch(e => { log(t('launchFail')+': '+e.message); toast(t('launchErr')+': '+e.message, 'error') })
+  window.wsl.launchGame(config).then(handleLaunchResult)
+  .catch(e => { log(t('launchFail')+': '+e.message); toast(t('launchErr')+': '+e.message, 'error') })
   .finally(() => { isLaunching = false; label.textContent = t('launch'); btn.style.pointerEvents = '' });
+}
+
+function handleLaunchResult(result) {
+  if (result?.success) { log(t('launchDone')+' (PID: '+result.pid+')'); return }
+  const err = result?.error || t('unknownErr');
+  log(t('launchFail')+': '+err);
+  toast(t('launchErr')+': '+err, 'error');
+  if (result?.needJava) openJavaDlModal(result.needJava);
 }
 
 function doLaunchAnon() {
@@ -502,10 +543,8 @@ function doLaunchAnon() {
   };
   saveSettings();
   log(t('startLaunch')+' '+verId+' (anonymous)...');
-  window.wsl.launchGame(config).then(result => {
-    if (result.success) log(t('launchDone')+' (PID: '+result.pid+')');
-    else { log(t('launchFail')+': '+(result.error||t('unknownErr'))); toast(t('launchErr')+': '+(result.error||t('unknownErr')), 'error') }
-  }).catch(e => { log(t('launchFail')+': '+e.message); toast(t('launchErr')+': '+e.message, 'error') })
+  window.wsl.launchGame(config).then(handleLaunchResult)
+  .catch(e => { log(t('launchFail')+': '+e.message); toast(t('launchErr')+': '+e.message, 'error') })
   .finally(() => { isLaunching = false; label.textContent = t('launch'); btn.style.pointerEvents = '' });
 }
 
@@ -551,6 +590,7 @@ async function loadVersions() {
     }
     onVerSel(sel.value);
     renderVersionGrid();
+    loadLocalVersions();
   } catch (e) { sel.innerHTML = '<option>'+t('noVersions')+'</option>' }
 }
 
@@ -708,47 +748,29 @@ async function installLoader(mcVersion, loaderName, loaderType, loaderVersion, d
 async function downloadVersion(id) {
   const v = versions.find(x => x.id === id);
   if (!v) return;
-  const jsonDest = minecraftDir + '/versions/' + id + '/' + id + '.json';
-  const jarDest = minecraftDir + '/versions/' + id + '/' + id + '.jar';
   showDlWidget();
-  let jsonOk = false;
-  if (v.url) {
-    const items = [{ url: v.url, dest: jsonDest, name: id + '.json' }];
-    const qid1 = await window.wsl.queueDownload(items);
-    currentQueueId = qid1;
-    await new Promise(r => {
-      window.wsl.onQueueProgress(it => {
-        updateDlWidget(it);
-        if (it.every(i => i.status === 'done' || i.status === 'error')) {
-          jsonOk = it[0].status === 'done';
-          r();
-        }
-      });
-    });
+  updateDlWidget([{ name: id, progress: 0, status: 'downloading' }]);
+  window.wsl.onInstallProgress((d) => {
+    updateDlWidget([{ name: d.message || id, progress: d.pct || 0, status: d.stage === 'done' ? 'done' : d.stage === 'error' ? 'error' : 'downloading' }]);
+  });
+  log('开始下载并安装版本: ' + id);
+  const result = await window.wsl.installVersion(id);
+  if (result?.success) {
+    updateDlWidget([{ name: id, progress: 100, status: 'done' }]);
+    toast(t('verDownloaded') + ': ' + id, 'success');
+    await loadVersions();
+    await loadLocalVersions();
+    setTimeout(() => { hideDlWidget(); showVersionDetail(id) }, 800);
+  } else {
+    updateDlWidget([{ name: (result?.error || t('unknownErr')), progress: 100, status: 'error' }]);
+    toast(t('launchFail') + ': ' + (result?.error || t('unknownErr')), 'error');
   }
-  if (!jsonOk) { toast(t('unknownErr'), 'error'); return }
-  const meta = await window.wsl.getVersionMeta(id);
-  if (meta?.downloads?.client?.url) {
-    const items2 = [{ url: meta.downloads.client.url, dest: jarDest, name: id + '.jar' }];
-    const qid2 = await window.wsl.queueDownload(items2);
-    currentQueueId = qid2;
-    await new Promise(r => {
-      window.wsl.onQueueProgress(it => {
-        updateDlWidget(it);
-        if (it.every(i => i.status === 'done' || i.status === 'error')) {
-          toast(it[0].status === 'done' ? t('verDownloaded') : t('launchFail'), it[0].status === 'done' ? 'success' : 'error');
-          r();
-        }
-      });
-    });
-  }
-  setTimeout(() => showVersionDetail(id), 500);
 }
 
 async function deleteVersion(id) {
   showConfirm(t('confirmDel'), '', async () => {
     const ok = await window.wsl.deleteFile(minecraftDir + '/versions/' + id);
-    if (ok) { toast(t('verDeleted')); loadLocalVersions() }
+    if (ok) { toast(t('verDeleted')); await loadVersions() }
   });
 }
 
@@ -779,6 +801,24 @@ function quickLaunch(id) {
 }
 
 // ── Mods ──
+async function preinstallMods() {
+  const verId = $('verSelect').value;
+  if (!verId || verId === t('noVersions')) { toast(t('selVerFirst'), 'error'); return }
+  toast(t('preinstallRunning'));
+  try {
+    const r = await window.wsl.preinstallMods(verId);
+    if (!r?.success) {
+      toast(t('preinstallFail') + ': ' + (r?.error || t('unknownErr')), 'error');
+      return;
+    }
+    if (r.installed?.length) toast(t('preinstallDone') + ': ' + r.installed.join(', '), 'success');
+    else toast(t('preinstallNone'));
+    loadMods();
+  } catch (e) {
+    toast(t('preinstallFail') + ': ' + e.message, 'error');
+  }
+}
+
 async function loadMods() {
   const grid = $('modsGrid');
   try {
@@ -861,9 +901,14 @@ async function browseJava() {
   if (p) { $('javaPath').value = p; saveSettings() }
 }
 async function detectJava() {
-  const p = await window.wsl.detectJava();
-  if (p) { $('javaPath').value = p; toast(t('javaFound')+' '+p); saveSettings() }
-  else toast(t('noJava'), 'error');
+  const sel = $('verSelect').value;
+  const mcVer = sel && sel !== t('noVersions') ? sel : '';
+  const r = await window.wsl.detectBestJava(mcVer);
+  if (r && r.path) {
+    $('javaPath').value = r.path;
+    saveSettings();
+    toast(t('javaFound') + ' ' + r.path + (r.major ? ' (Java ' + r.major + ')' : ''));
+  } else toast(t('noJava'), 'error');
 }
 
 // ── Log ──
@@ -909,6 +954,76 @@ function switchResSource() {
 }
 
 function refreshResources() { resPage = 0; resDataAll = []; resHasMore = true; loadResources(true) }
+
+// ── Modpack Import ──
+let importRunning = false;
+let pendingPackPath = '';
+
+function formatSize(n) {
+  const num = Number(n) || 0;
+  if (num <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0; let v = num;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+  return (i === 0 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
+}
+
+function closePackPreview() { $('packPreviewModal').classList.remove('active') }
+
+async function importModpack() {
+  if (importRunning) return;
+  const parsed = await window.wsl.parseModpack();
+  if (parsed?.canceled) return;
+  if (!parsed?.success) {
+    toast(t('importFail') + ': ' + (parsed?.error || t('unknownErr')), 'error');
+    return;
+  }
+  pendingPackPath = parsed.filePath;
+  $('packPreviewTitle').textContent = parsed.name + ' ' + parsed.version;
+  const loaderText = parsed.loader ? parsed.loader.name + ' ' + parsed.loader.version : t('packVanilla');
+  $('packPreviewSummary').innerHTML = `
+    <div>${t('packLoader')}: <strong>${escHtml(loaderText)}</strong></div>
+    <div>Minecraft: <strong>${escHtml(parsed.mcVersion)}</strong></div>
+    <div>${t('packFiles')}: <strong>${parsed.fileCount}</strong> &nbsp;·&nbsp; ${t('packSize')}: <strong>${formatSize(parsed.totalSize)}</strong> &nbsp;·&nbsp; ${t('packOverrides')}: <strong>${parsed.overrideCount}</strong></div>
+  `;
+  const files = parsed.files || [];
+  $('packPreviewList').innerHTML = files.length
+    ? files.map(f => `<div style="display:flex;gap:8px;padding:3px 4px;border-bottom:1px solid var(--glass-border)"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)">${escHtml(f.path)}</span><span style="color:var(--text3);flex-shrink:0">${formatSize(f.size)}</span></div>`).join('') + (parsed.fileCount > files.length ? `<div style="padding:6px 4px;color:var(--text3)">${t('packMore')}</div>` : '')
+    : '<p class="empty-text" style="padding:8px">' + t('packNoFiles') + '</p>';
+  $('packPreviewOkBtn').onclick = () => { closePackPreview(); runModpackImport(pendingPackPath) };
+  $('packPreviewModal').classList.add('active');
+}
+
+async function runModpackImport(filePath) {
+  if (importRunning) return;
+  importRunning = true;
+  const box = $('importStatus'), text = $('importStatusText'), bar = $('importBar'), pct = $('importPct');
+  box.style.display = 'flex';
+  text.textContent = t('importing');
+  bar.style.width = '0%';
+  pct.textContent = '0%';
+  try {
+    const result = await window.wsl.importModpack(filePath, { javaPath: $('javaPath').value || DEFAULT_JAVA });
+    if (result?.canceled) { box.style.display = 'none'; return }
+    if (!result?.success) {
+      text.textContent = t('importFail');
+      toast(t('importFail') + ': ' + (result?.error || t('unknownErr')), 'error');
+      return;
+    }
+    text.textContent = result.failed ? t('importDone') + ' (' + result.failed + ' failed)' : t('importDone');
+    bar.style.width = '100%';
+    pct.textContent = '100%';
+    toast(t('importDone') + ': ' + result.name, 'success');
+    await loadVersions();
+    if (result.versionId) { $('verSelect').value = result.versionId; onVerSel(result.versionId) }
+  } catch (e) {
+    text.textContent = t('importFail');
+    toast(t('importFail') + ': ' + e.message, 'error');
+  } finally {
+    importRunning = false;
+    setTimeout(() => { box.style.display = 'none' }, 3000);
+  }
+}
 
 function debounceSearch() {
   clearTimeout(resSearchTimer);
@@ -1018,6 +1133,9 @@ $('content').addEventListener('scroll', () => {
   const el = $('content');
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300 && resHasMore && !resLoading && $('page-resources').classList.contains('active')) {
     loadResources(false);
+  }
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300 && skinNext && !skinLoading && $('page-skins').classList.contains('active')) {
+    loadSkins(false);
   }
 });
 
@@ -1263,6 +1381,18 @@ async function downloadResource(projectId, versionNumber) {
     const v = versions.find(x => x.version_number === versionNumber) || versions[0];
     if (!v || !v.files || v.files.length === 0) { toast(t('unknownErr'), 'error'); return }
     const file = v.files[0];
+    if (currentDetailType === 'modpack') {
+      if (resSource !== 'modrinth') { toast(t('importOnlyModrinth'), 'error'); return }
+      const packDir = minecraftDir + '/modpacks';
+      await window.wsl.ensureDir(packDir);
+      const packPath = packDir + '/' + file.filename;
+      showDlWidget();
+      const pid = await window.wsl.queueDownload([{ url: file.url, dest: packPath, name: file.filename }]);
+      currentQueueId = pid;
+      window.wsl.onQueueProgress((items) => updateDlWidget(items));
+      await runModpackImport(packPath);
+      return;
+    }
     const subfolder = subfolderForType(currentDetailType);
     const dest = minecraftDir + '/' + subfolder + '/' + file.filename;
     const qid = await window.wsl.queueDownload([{ url: file.url, dest, name: file.filename }]);
@@ -1306,7 +1436,15 @@ function selectMirror(idx) {
 }
 
 // ── Java Download ──
-function openJavaDlModal() {
+let javaDlTargetMajor = 0;
+function openJavaDlModal(major) {
+  javaDlTargetMajor = Number(major) || 0;
+  const msg = $('javaDlMsg');
+  if (msg) {
+    msg.textContent = javaDlTargetMajor
+      ? '当前版本需要 Java ' + javaDlTargetMajor + '，是否自动下载并安装？'
+      : t('javaDlMsg');
+  }
   $('javaDlProgress').style.display = 'none';
   $('javaDlAutoBtn').style.display = '';
   $('javaDlBrowseBtn').style.display = '';
@@ -1335,19 +1473,21 @@ async function startJavaDownload() {
   $('javaDlProgress').style.display = '';
   bar.style.width = '0%';
   speed.textContent = '';
-  filename.textContent = t('refresh')+'...';
+  filename.textContent = t('javaDlNeed') + '...';
 
   window.wsl.onJavaDlProgress((d) => {
-    if (d.pct) { bar.style.width = d.pct + '%' }
+    if (typeof d.pct === 'number') bar.style.width = d.pct + '%';
     if (d.speed) speed.textContent = d.speed;
     if (d.filename) filename.textContent = d.filename;
   });
 
+  const sel = $('verSelect').value;
+  const mcVer = sel && sel !== t('noVersions') ? sel : '';
   try {
-    const result = await window.wsl.downloadJava();
+    const result = await window.wsl.downloadJava({ mcVersion: mcVer, major: javaDlTargetMajor || undefined });
     if (result.success) {
       bar.style.width = '100%';
-      speed.textContent = t('javaDlDone');
+      speed.textContent = result.reused ? t('javaReused') : t('javaDlDone');
       $('javaPath').value = result.path;
       saveSettings();
       setTimeout(closeJavaDlModal, 1500);
@@ -1417,6 +1557,15 @@ window.addEventListener('keydown', e => {
 });
 
 window.wsl.onLog((msg) => { console.log('[BOT-LOG] ' + msg); log(msg) });
+window.wsl.onImportProgress((d) => {
+  const box = $('importStatus');
+  if (!box) return;
+  box.style.display = 'flex';
+  $('importStatusText').textContent = d.message || '';
+  $('importBar').style.width = (d.percent || 0) + '%';
+  $('importPct').textContent = (d.percent || 0) + '%';
+  log('[Import] ' + (d.message || ''));
+});
 window.wsl.onProgress((pct) => updateProgress(pct));
 window.wsl.onDownloadProgress((d) => { if (d.pct) updateProgress(d.pct) });
 
@@ -1440,13 +1589,40 @@ async function tryAutoLogin() {
 
 async function checkJavaOnStartup() {
   const saved = $('javaPath').value;
-  if (saved && saved !== DEFAULT_JAVA) return;
+  if (saved && saved !== DEFAULT_JAVA) {
+    const exists = await window.wsl.fileExists(saved);
+    if (exists) return;
+  }
   try {
-    const found = await window.wsl.detectJava();
-    if (found && found !== DEFAULT_JAVA) { $('javaPath').value = found; saveSettings(); return }
+    const r = await window.wsl.detectBestJava('');
+    if (r && r.path) { $('javaPath').value = r.path; saveSettings(); return }
   } catch {}
   openJavaDlModal();
 }
+
+// ── 更新检查 / 反馈 ──
+async function checkForUpdates(manual) {
+  try {
+    const r = await window.wsl.checkUpdate();
+    if (!r || !r.success) {
+      if (manual) toast(t('updateFail') + ': ' + ((r && r.error) || t('unknownErr')), 'error');
+      return;
+    }
+    if (r.hasUpdate) {
+      if (!manual && localStorage.getItem('wsl_skip_update') === r.latest) return;
+      const notes = (r.notes || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      const msg = t('newVersionMsg', r.latest, r.current) + (notes ? ' — ' + notes : '');
+      showConfirm(t('newVersion') + ' ' + r.latest, msg, () => window.wsl.openUrl(r.url), t('updateNow'));
+    } else if (manual) {
+      toast(t('updateLatest') + ' (v' + r.current + ')');
+    }
+  } catch (e) {
+    if (manual) toast(t('updateFail') + ': ' + e.message, 'error');
+  }
+}
+
+function openChannelModal() { $('channelModal').classList.add('active') }
+function closeChannelModal() { $('channelModal').classList.remove('active') }
 
 // ── AI Bot ──
 // ── Bot State ──
@@ -1814,6 +1990,178 @@ function aiChatClear() {
   window.wsl.botChatClear()
 }
 
+// ── Skin Library ──
+let skinList = [];
+let skinNext = null;
+let skinLoading = false;
+let currentSkin = null;
+
+function drawSkinPreview(canvas, img, slim) {
+  if (!canvas || !img) return;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const k = Math.max(1, Math.round(img.naturalWidth / 64));
+  const hd = img.naturalHeight >= 64 * k;
+  const scale = canvas.width / 16;
+  const px = (sx, sy, sw, sh, dx, dy) => ctx.drawImage(img, sx * k, sy * k, sw * k, sh * k, dx * scale, dy * scale, sw * scale, sh * scale);
+  const armW = slim ? 3 : 4;
+  const rightArmX = 4 - armW;
+
+  // 身体、腿、手臂、头（64x64 与 64x32 通用部分）
+  px(20, 20, 8, 12, 4, 8);
+  px(4, 20, 4, 12, 4, 20);
+  px(44, 20, armW, 12, rightArmX, 8);
+  px(8, 8, 8, 8, 4, 0);
+
+  if (hd) {
+    px(20, 52, 4, 12, 8, 20);
+    px(36, 52, armW, 12, 12, 8);
+    // 第二层：帽子、外套
+    px(40, 8, 8, 8, 4, 0);
+    px(20, 36, 8, 12, 4, 8);
+    px(44, 36, armW, 12, rightArmX, 8);
+    px(52, 52, armW, 12, 12, 8);
+  } else {
+    // 旧版 64x32：左侧肢体镜像右侧
+    ctx.save();
+    ctx.translate(12 * scale, 20 * scale);
+    ctx.scale(-1, 1);
+    px(4, 20, 4, 12, 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(12 * scale, 8 * scale);
+    ctx.scale(-1, 1);
+    px(44, 20, armW, 12, 0, 0);
+    ctx.restore();
+    px(40, 8, 8, 8, 4, 0);
+  }
+}
+
+function paintSkinCanvas(canvas, url, slim) {
+  if (!canvas || !url) return;
+  const img = new Image();
+  img.onload = () => drawSkinPreview(canvas, img, slim);
+  img.src = url;
+}
+
+function refreshSkinPreview() {
+  if (!currentSkin) return;
+  paintSkinCanvas($('skinBig'), currentSkin.dataUrl || currentSkin.url, $('skinVariant').value === 'slim');
+}
+
+async function loadSkins(reset) {
+  if (skinLoading) return;
+  skinLoading = true;
+  const grid = $('skinGrid');
+  const status = $('skinStatus');
+  if (reset) {
+    skinList = [];
+    skinNext = null;
+    grid.innerHTML = '<p class="empty-text">' + t('skinLoading') + '</p>';
+  } else if (status) {
+    status.style.display = 'block';
+    status.textContent = t('skinLoading');
+  }
+  try {
+    const res = await window.wsl.listSkins(reset ? null : skinNext);
+    if (!res?.success) throw new Error(res?.error || t('unknownErr'));
+    if (reset) grid.innerHTML = '';
+    const start = skinList.length;
+    skinList = skinList.concat(res.skins || []);
+    skinNext = res.next;
+    (res.skins || []).forEach((s, i) => {
+      const idx = start + i;
+      const card = document.createElement('div');
+      card.className = 'skin-card';
+      card.onclick = () => openSkinModal(idx);
+      const canvas = document.createElement('canvas');
+      canvas.width = 64; canvas.height = 128;
+      const label = document.createElement('div');
+      label.className = 'skin-name';
+      label.textContent = s.name || ('#' + (idx + 1));
+      card.appendChild(canvas);
+      card.appendChild(label);
+      grid.appendChild(card);
+      paintSkinCanvas(canvas, s.dataUrl || s.url, false);
+    });
+    if (!skinList.length) grid.innerHTML = '<p class="empty-text">' + t('noRes') + '</p>';
+    if (status) {
+      status.style.display = skinNext ? 'none' : (skinList.length ? 'block' : 'none');
+      status.textContent = skinNext ? '' : t('loadedAll');
+    }
+    $('skinHint').textContent = t('skinHint');
+  } catch (e) {
+    grid.innerHTML = '<p class="empty-text">' + escHtml(e.message) + '</p>';
+  } finally {
+    skinLoading = false;
+  }
+}
+
+function showSkinModal(skin, title) {
+  currentSkin = skin;
+  if (!currentSkin) return;
+  $('skinModalName').textContent = title || currentSkin.name || '';
+  $('skinApplyHint').textContent = t(currentAccount && currentAccount.type === 'microsoft' ? 'skinHintOnline' : 'skinHintLocal');
+  $('skinVariant').value = 'classic';
+  refreshSkinPreview();
+  $('skinModal').classList.add('active');
+}
+
+function openSkinModal(idx) {
+  const skin = skinList[idx];
+  if (!skin) return;
+  showSkinModal(skin, skin.name || ('#' + (idx + 1)));
+}
+
+function importLocalSkin() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/png';
+  input.onchange = () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const img = new Image();
+      img.onload = () => {
+        const k = img.naturalWidth / 64;
+        if (!Number.isInteger(k) || k < 1 || k > 4 || (img.naturalHeight !== 64 * k && img.naturalHeight !== 32 * k)) {
+          toast(t('skinInvalidSize'), 'error');
+          return;
+        }
+        showSkinModal({ name: t('skinLocalName'), url: dataUrl, dataUrl, local: true }, t('skinLocalName'));
+      };
+      img.onerror = () => toast(t('skinInvalidSize'), 'error');
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+function closeSkinModal() { $('skinModal').classList.remove('active') }
+
+async function applyCurrentSkin() {
+  if (!currentAccount) { toast(t('skinNeedAccount'), 'error'); return }
+  if (!currentSkin) return;
+  const btn = $('skinApplyBtn');
+  btn.disabled = true;
+  try {
+    const res = await window.wsl.applySkin({ account: currentAccount, skinUrl: currentSkin.url, variant: $('skinVariant').value });
+    if (res?.success) {
+      toast(t('skinApplied') + (res.mode === 'local' ? ' · 本地' : ''), 'success');
+      closeSkinModal();
+    } else {
+      toast(t('skinApplyFail') + ': ' + (res?.error || t('unknownErr')), 'error');
+    }
+  } catch (e) {
+    toast(t('skinApplyFail') + ': ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ── Init ──
 loadAccounts();
 renderProfile();
@@ -1822,6 +2170,8 @@ loadSettings();
 initMirrorSelect();
 loadVersions();
 setTimeout(checkJavaOnStartup, 2000);
+setTimeout(() => checkForUpdates(false), 4000);
+window.wsl.getAppVersion().then(v => { const el = $('appVersionText'); if (el && v) el.textContent = 'v' + v }).catch(() => {});
 $('langSelect').value = lang;
 applyLang();
 

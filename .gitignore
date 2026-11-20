@@ -1,5 +1,8 @@
 node_modules/
 dist/
+runtime/
+build/
+media-session/*.exe
 patched-deps/
 splash-ui/
 splash/
