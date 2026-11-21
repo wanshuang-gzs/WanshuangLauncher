@@ -1,7 +1,7 @@
 # ══════════════════════════════════════════════════════════════════
 # Wanshuang Launcher - Microsoft Store (MSIX) 构建脚本
 # 用法: powershell -ExecutionPolicy Bypass -File build-appx.ps1
-# 产物: dist\Wanshuang Launcher 1.2.1.msix
+# 产物: dist\Wanshuang Launcher 1.2.2.msix
 # ══════════════════════════════════════════════════════════════════
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -41,6 +41,6 @@ Write-Host '[4/4] signtool sign...'
 & $signtool sign /tr http://timestamp.digicert.com /f $cert /fd sha256 /td sha256 /d 'Wanshuang Launcher' /p $certPwd (Join-Path $tmp 'package.msix')
 if ($LASTEXITCODE -ne 0) { throw 'signtool failed' }
 
-$out = Join-Path $dist 'Wanshuang Launcher 1.2.1.msix'
+$out = Join-Path $dist 'Wanshuang Launcher 1.2.2.msix'
 Copy-Item (Join-Path $tmp 'package.msix') $out -Force
 Write-Host "Done: $out"
