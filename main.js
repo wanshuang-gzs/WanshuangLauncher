@@ -2402,16 +2402,66 @@ async function downloadParallel(url, dest, onProgress, connections = 6) {
   }
 }
 
-// 清华镜像目录中取最新的 JRE zip
-async function findTunaJavaZip(major, arch) {
+// 通用 https 请求（自动跟随重定向），走 Node 网络栈，不受 Electron 代理配置影响
+function httpsFetch(url, opts = {}, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: { 'User-Agent': 'wanshuang-launcher', ...(opts.headers || {}) },
+      timeout: opts.timeout || 15000,
+    }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && redirects < 5) {
+        res.resume();
+        const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).href;
+        return resolve(httpsFetch(next, opts, redirects + 1));
+      }
+      resolve(res);
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
+}
+
+// 收集可用镜像：清华 Adoptium → Azul Zulu → Adoptium 官方
+async function resolveJavaMirrorUrls(major, arch) {
+  const urls = [];
   try {
-    const html = await httpGet(`https://mirrors.tuna.tsinghua.edu.cn/Adoptium/${major}/jre/${arch}/windows/`, null, 15000);
-    if (typeof html !== 'string') return null;
-    const files = (html.match(/OpenJDK\d+U-jre_[^"'<>\s]+\.zip/g) || []);
-    if (!files.length) return null;
-    const unique = [...new Set(files)].sort();
-    return `https://mirrors.tuna.tsinghua.edu.cn/Adoptium/${major}/jre/${arch}/windows/${unique[unique.length - 1]}`;
-  } catch { return null }
+    const res = await httpsFetch(`https://mirrors.tuna.tsinghua.edu.cn/Adoptium/${major}/jre/${arch}/windows/`, { timeout: 10000 });
+    let html = '';
+    for await (const c of res) html += c;
+    const files = [...new Set(html.match(/OpenJDK\d+U-jre_[^"'<>\s]+\.zip/g) || [])].sort();
+    if (files.length) urls.push(`https://mirrors.tuna.tsinghua.edu.cn/Adoptium/${major}/jre/${arch}/windows/${files[files.length - 1]}`);
+  } catch {}
+  try {
+    const azulArch = arch === 'aarch64' ? 'arm' : 'x64';
+    const res = await httpsFetch(`https://api.azul.com/metadata/v1/zulu/packages/?java_version=${major}&os=windows&arch=${azulArch}&java_package_type=jre&archive_type=zip&latest=true&release_status=ga`, { timeout: 10000 });
+    let body = '';
+    for await (const c of res) body += c;
+    const list = JSON.parse(body);
+    const hit = Array.isArray(list) ? list.find(x => x.download_url) : null;
+    if (hit) urls.push(hit.download_url);
+  } catch {}
+  urls.push(`https://api.adoptium.net/v3/binary/latest/${major}/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`);
+  return urls;
+}
+
+// 拉取前 2MB 估算速度（MB/s），失败返回 0
+async function probeSpeed(url, ms = 6000) {
+  try {
+    const res = await httpsFetch(url, { headers: { Range: 'bytes=0-2097151' }, timeout: ms });
+    if (res.statusCode !== 206 && res.statusCode !== 200) { res.resume(); return 0 }
+    const start = Date.now();
+    let bytes = 0;
+    await new Promise((resolve) => {
+      const t = setTimeout(() => { try { res.destroy() } catch {}; resolve() }, ms);
+      res.on('data', c => {
+        bytes += c.length;
+        if (bytes >= 2097152) { clearTimeout(t); try { res.destroy() } catch {}; resolve() }
+      });
+      res.on('end', () => { clearTimeout(t); resolve() });
+      res.on('error', () => { clearTimeout(t); resolve() });
+    });
+    return bytes / Math.max(0.001, (Date.now() - start) / 1000);
+  } catch { return 0 }
 }
 
 async function installJavaRuntime(opts, sendLog, sendProgress) {
@@ -2429,10 +2479,13 @@ async function installJavaRuntime(opts, sendLog, sendProgress) {
     }
 
     const arch = process.arch === 'arm64' ? 'aarch64' : 'x64';
-    const urls = [];
-    const tuna = await findTunaJavaZip(major, arch);
-    if (tuna) urls.push(tuna);
-    urls.push(`https://api.adoptium.net/v3/binary/latest/${major}/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`);
+    // 多镜像并发测速，按速度从快到慢依次尝试
+    const candidates = await resolveJavaMirrorUrls(major, arch);
+    sendLog('Found ' + candidates.length + ' Java mirror(s), testing speed ...');
+    const scored = await Promise.all(candidates.map(async (u) => ({ u, s: await probeSpeed(u) })));
+    scored.sort((a, b) => b.s - a.s);
+    for (const { u, s } of scored) sendLog('Java mirror: ' + (s > 0 ? (s / 1048576).toFixed(1) + ' MB/s' : '不可用') + ' ' + u);
+    const urls = scored.map(x => x.u);
 
     sendLog('Downloading Java ' + major + ' ...');
     if (!fs.existsSync(JAVA_RUNTIME_DIR)) fs.mkdirSync(JAVA_RUNTIME_DIR, { recursive: true });
