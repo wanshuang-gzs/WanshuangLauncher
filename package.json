@@ -1,6 +1,6 @@
 {
   "name": "wanshuang-launcher",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Wanshuang Launcher",
   "main": "main.js",
   "scripts": {
@@ -78,7 +78,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Wanshuang Launcher",
-      "artifactName": "WanshuangLauncher-Setup-1.2.0.exe"
+      "artifactName": "WanshuangLauncher-Setup-1.2.1.exe"
     },
     "extraResources": [
       {
