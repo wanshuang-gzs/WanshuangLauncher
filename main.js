@@ -2333,6 +2333,75 @@ ipcMain.handle('mc:launch', async (_, config) => {
 });
 
 // ── Java Download ──
+// 多线程分块下载，避免单连接被限速（镜像一般支持 Range）
+function probeTotalSize(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'Range': 'bytes=0-0', 'User-Agent': 'wanshuang-launcher' }, timeout: 15000 }, (res) => {
+      const cr = res.headers['content-range'] || '';
+      const m = /bytes\s+\d+-\d+\/(\d+)/i.exec(cr);
+      const len = parseInt(res.headers['content-length'] || '0');
+      res.resume();
+      if (res.statusCode === 206 && m) resolve(parseInt(m[1]));
+      else if (res.statusCode === 200 && len > 0) resolve(len);
+      else reject(new Error('HTTP ' + res.statusCode));
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
+}
+
+function fetchRange(url, start, end, partPath, onBytes) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'Range': `bytes=${start}-${end}`, 'User-Agent': 'wanshuang-launcher' }, timeout: 30000 }, (res) => {
+      if (res.statusCode !== 206 && res.statusCode !== 200) { res.resume(); reject(new Error('HTTP ' + res.statusCode)); return }
+      const file = fs.createWriteStream(partPath);
+      res.on('data', c => onBytes(c.length));
+      res.on('error', (e) => { try { file.destroy() } catch {}; reject(e) });
+      res.pipe(file);
+      file.on('finish', () => { try { file.close() } catch {}; resolve() });
+      file.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
+}
+
+async function downloadParallel(url, dest, onProgress, connections = 6) {
+  let total = 0;
+  try { total = await probeTotalSize(url) } catch { return false }
+  if (!total || total < 4 * 1024 * 1024) return false;
+  const chunk = Math.ceil(total / connections);
+  const parts = [];
+  let received = 0;
+  const report = (n) => { received += n; if (onProgress) onProgress(Math.min(received, total), total) };
+  try {
+    await Promise.all(Array.from({ length: connections }, (_, i) => {
+      const start = i * chunk;
+      if (start >= total) return Promise.resolve();
+      const end = Math.min(total - 1, start + chunk - 1);
+      const partPath = dest + '.part' + i;
+      parts.push({ partPath, start, end });
+      return (async () => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try { await fetchRange(url, start, end, partPath, report); return } catch (e) {
+            try { const s = fs.statSync(partPath).size; received -= s } catch {}
+            try { fs.unlinkSync(partPath) } catch {}
+            if (attempt === 3) throw e;
+          }
+        }
+      })();
+    }));
+    const fd = fs.openSync(dest, 'w');
+    try { for (const { partPath } of parts) fs.writeSync(fd, fs.readFileSync(partPath)) } finally { fs.closeSync(fd) }
+    parts.forEach(({ partPath }) => { try { fs.unlinkSync(partPath) } catch {} });
+    return fs.statSync(dest).size === total;
+  } catch {
+    parts.forEach(({ partPath }) => { try { fs.unlinkSync(partPath) } catch {} });
+    try { fs.unlinkSync(dest) } catch {}
+    return false;
+  }
+}
+
 // 清华镜像目录中取最新的 JRE zip
 async function findTunaJavaZip(major, arch) {
   try {
@@ -2372,8 +2441,8 @@ async function installJavaRuntime(opts, sendLog, sendProgress) {
     let downloaded = false;
     for (const url of urls) {
       sendLog('Java source: ' + url);
-      let lastTime = Date.now(); let lastBytes = 0;
-      const ok = await downloadWithRetry(url, zipPath, 2, (dl, total) => {
+      let lastTime = Date.now(); let lastBytes = 0; let lastLog = 0;
+      const onProg = (dl, total) => {
         const pct = total > 0 ? Math.round((dl / total) * 100) : 0;
         const now = Date.now();
         let speedText = '';
@@ -2382,8 +2451,17 @@ async function installJavaRuntime(opts, sendLog, sendProgress) {
           speedText = bps > 1024 * 1024 ? (bps / 1024 / 1024).toFixed(1) + ' MB/s' : Math.max(1, Math.round(bps / 1024)) + ' KB/s';
           lastTime = now; lastBytes = dl;
         }
+        if (now - lastLog >= 2000) {
+          lastLog = now;
+          sendLog('Java ' + major + ' 下载中: ' + pct + '% ' + speedText + (total > 0 ? ' (' + (total / 1024 / 1024).toFixed(0) + ' MB)' : ''));
+        }
         sendProgress(Math.min(pct, 99), speedText, 'Java ' + major);
-      });
+      };
+      let ok = await downloadParallel(url, zipPath, onProg, 6);
+      if (!ok) {
+        sendLog('多线程下载不可用，改用单连接');
+        ok = await downloadWithRetry(url, zipPath, 2, onProg);
+      }
       if (ok && fs.existsSync(zipPath) && fs.statSync(zipPath).size > 1024 * 1024) { downloaded = true; break }
       try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath) } catch {}
     }
