@@ -2317,7 +2317,7 @@ ipcMain.handle('mc:launch', async (_, config) => {
       }
     }
     prepareOptionsTxt(gameDir, sendLog);
-    const jvmArgsFinal = [`-Xmx${maxRam}M`, `-Xms${minRam}M`, `-Djava.library.path=${nativesDir}`, '-Dminecraft.launcher.brand=wanshuang', '-Dminecraft.launcher.version=1.2.2', '-Dlog4j.configurationFile=log4j2.xml', ...profileJvmArgs, ...(skinAgentArg ? [skinAgentArg] : []), '-cp', cp, ...extraJvmArgs, mainClass, ...mcArgs].filter(Boolean);
+    const jvmArgsFinal = [`-Xmx${maxRam}M`, `-Xms${minRam}M`, `-Djava.library.path=${nativesDir}`, '-Dminecraft.launcher.brand=wanshuang', '-Dminecraft.launcher.version=' + app.getVersion(), '-Dlog4j.configurationFile=log4j2.xml', ...profileJvmArgs, ...(skinAgentArg ? [skinAgentArg] : []), '-cp', cp, ...extraJvmArgs, mainClass, ...mcArgs].filter(Boolean);
     sendLog('Launching: ' + java);
     sendLog('JVM: -Xmx' + maxRam + 'M -Xms' + minRam + 'M -Djava.library.path=' + nativesDir + (profileJvmArgs.length ? ' | profile JVM: ' + profileJvmArgs.join(' ') : ''));
     sendLog('Main class: ' + mainClass);
