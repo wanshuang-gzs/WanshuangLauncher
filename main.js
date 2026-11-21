@@ -598,23 +598,41 @@ async function downloadWithRetry(url, dest, retries = 3, onProgress) {
       await new Promise((resolve, reject) => {
         const file = fs.createWriteStream(dest);
         const req = net.request(url);
-        let total = 0, dl = 0;
+        let total = 0, dl = 0, settled = false, idleTimer = null;
+        const settle = (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(idleTimer);
+          if (err) reject(err); else resolve();
+        };
+        // 30 秒没有任何数据就放弃，交给上层重试，避免永久卡住
+        const armIdle = () => {
+          clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => {
+            try { req.abort() } catch {}
+            try { file.destroy() } catch {}
+            settle(new Error('下载超时（30 秒无数据）'));
+          }, 30000);
+        };
+        armIdle();
         req.on('response', (res) => {
           if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
             res.resume();
             try { file.destroy() } catch {}
             try { fs.unlinkSync(dest) } catch {}
-            reject(new Error('HTTP ' + res.statusCode));
+            settle(new Error('HTTP ' + res.statusCode));
             return;
           }
           total = parseInt(res.headers['content-length'] || '0');
-          res.on('data', c => { dl += c.length; if (total > 0 && onProgress) onProgress(dl, total) });
-          res.on('error', (e) => { try { file.destroy() } catch {}; reject(e) });
+          armIdle();
+          res.on('data', c => { dl += c.length; armIdle(); if (total > 0 && onProgress) onProgress(dl, total) });
+          res.on('error', (e) => { try { file.destroy() } catch {}; settle(e) });
           res.pipe(file);
         });
-        file.on('finish', () => { file.close(); resolve() });
-        file.on('error', (e) => { try { file.destroy() } catch {}; reject(e) });
-        req.on('error', reject);
+        file.on('finish', () => { try { file.close() } catch {}; settle() });
+        file.on('error', (e) => { try { file.destroy() } catch {}; settle(e) });
+        req.on('error', (e) => settle(e));
+        req.on('abort', () => settle(new Error('下载已中止')));
         req.end();
       });
       return true;
@@ -839,6 +857,14 @@ async function installLoaderInternal({ mcVersion, loaderName, loaderType, loader
         sendProgress(qItems, 4, 2);
       } else {
         qItems[0].status = 'downloading'; sendProgress(qItems, 4, 0);
+        // Forge/NeoForge 安装器要求目标目录里有 launcher_profiles.json，否则直接报错退出
+        const profilesPath = path.join(MINECRAFT_DIR, 'launcher_profiles.json');
+        let profilesData = null;
+        try { profilesData = JSON.parse(fs.readFileSync(profilesPath, 'utf8')) } catch {}
+        if (!profilesData || !profilesData.profiles) {
+          fs.writeFileSync(profilesPath, JSON.stringify({ profiles: {}, settings: { language: 'zh_cn' }, version: 3 }, null, 2), 'utf8');
+          log('已创建 launcher_profiles.json（加载器安装器要求）');
+        }
         const installerPath = path.join(MINECRAFT_DIR, 'runtime', 'loader-installer.jar');
         fs.mkdirSync(path.join(MINECRAFT_DIR, 'runtime'), { recursive: true });
         log('正在下载 ' + loaderName + ' 安装器...');
@@ -860,12 +886,44 @@ async function installLoaderInternal({ mcVersion, loaderName, loaderType, loader
         qItems[1].status = 'downloading'; sendProgress(qItems, 4, 1);
         log('正在运行 ' + loaderName + ' 安装器...');
         const versionsBefore = new Set(fs.readdirSync(versionsDir));
-        const cmd = loaderType === 'forge' ? '--installClient' : '--install-client';
-        try {
-          execSync(`"${javaPath}" -jar "${installerPath}" ${cmd} 2>&1`, { timeout: 180000, cwd: MINECRAFT_DIR });
-        } catch (e) {
-          try { fs.unlinkSync(installerPath) } catch {}
-          throw new Error(loaderName + ' 安装器运行失败: ' + (e.stderr || e.message || '').substring(0, 200));
+        const cmd = '--installClient';
+        const runInstaller = (extra) => new Promise((resolve) => {
+          const child = spawn(javaPath, ['-jar', installerPath, cmd, ...extra], { cwd: MINECRAFT_DIR, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+          let out = '';
+          const timer = setTimeout(() => {
+            try { child.kill() } catch {}
+            resolve({ code: -1, out: out + '\n安装器运行超时（3 分钟）' });
+          }, 180000);
+          const onData = (d) => {
+            const t = String(d).trim();
+            if (t) out = (out + '\n' + t).slice(-4000);
+            if (t) log(t.substring(0, 200));
+          };
+          child.stdout.on('data', onData);
+          child.stderr.on('data', onData);
+          child.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, out: String(e.message) }) });
+          child.on('close', (code) => { clearTimeout(timer); resolve({ code, out }) });
+        });
+        const findCreated = () => fs.readdirSync(versionsDir).find(f => !versionsBefore.has(f)) ||
+          candidateNames.find(n => fs.existsSync(path.join(versionsDir, n)));
+        // 显式传入 .minecraft 作为目标目录：部分 JDK 在父目录含非 ASCII 字符时，
+        // 用工作目录 "." 找不到 launcher_profiles.json，会直接报 "no minecraft launcher profile"
+        let run = await runInstaller([MINECRAFT_DIR]);
+        if (run.code !== 0 && !findCreated()) {
+          log(loaderName + ' 指定目录安装失败，改用工作目录重试: ' + run.out.substring(Math.max(0, run.out.length - 200)));
+          run = await runInstaller([]);
+        }
+        if (run.code !== 0 || !findCreated()) {
+          const made = findCreated();
+          const madeDir = made ? path.join(versionsDir, made) : null;
+          const madeOk = madeDir && fs.existsSync(madeDir) && fs.readdirSync(madeDir).some(f => f.endsWith('.json'));
+          if (madeOk) {
+            log(loaderName + ' 安装器返回错误，但已生成有效版本目录 ' + made + '，继续导入');
+            created = made;
+          } else {
+            try { fs.unlinkSync(installerPath) } catch {}
+            throw new Error(loaderName + ' 安装器运行失败（退出码 ' + run.code + '）: ' + run.out.substring(Math.max(0, run.out.length - 300)));
+          }
         }
         qItems[1].progress = 100; qItems[1].status = 'done'; sendProgress(qItems, 4, 2);
 
@@ -963,7 +1021,8 @@ async function mapLimit(items, limit, worker) {
   await Promise.all(runners);
 }
 
-function extractOverrideEntries(zip, prefix, instanceDir) {
+async function extractOverrideEntries(zip, prefix, instanceDir, onCount) {
+  let count = 0;
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) continue;
     const name = entry.entryName.replace(/\\/g, '/');
@@ -973,7 +1032,13 @@ function extractOverrideEntries(zip, prefix, instanceDir) {
     const dest = packSafeJoin(instanceDir, rel);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, entry.getData());
+    // 每 20 个文件让出一次事件循环，避免大整合包写入时界面卡死
+    if (++count % 20 === 0) {
+      if (onCount) onCount(count);
+      await new Promise(r => setImmediate(r));
+    }
   }
+  return count;
 }
 
 // 解析整合包内容（不下载），返回给前端展示确认清单
@@ -1139,39 +1204,61 @@ ipcMain.handle('mc:importModpack', async (_, filePath, opts) => {
     }
 
     const files = (index.files || []).filter(f => f && f.path && (!f.env || f.env.client !== 'unsupported'));
+    log('整合包内容: Minecraft ' + mcVersion + ' / ' + (loader ? loader.name + ' ' + loader.version : '原版') +
+      ' / ' + files.length + ' 个文件 / ' + (Math.round(files.reduce((s, f) => s + (Number(f.fileSize) || 0), 0) / 1048576)) + ' MB');
     const failed = [];
     let finished = 0;
+    const fileFrac = new Array(files.length).fill(0);
+    let lastReport = 0;
+    const reportMods = (force) => {
+      const now = Date.now();
+      if (!force && now - lastReport < 200) return;
+      lastReport = now;
+      const frac = fileFrac.reduce((sum, f) => sum + Math.min(f, 1), 0) / Math.max(files.length, 1);
+      send('mods', '正在下载模组 ' + finished + '/' + files.length, 32 + Math.min(frac, 1) * 63);
+    };
     send('mods', '正在下载模组 0/' + files.length, 32);
-    await mapLimit(files, 4, async (file) => {
+    await mapLimit(files, 4, async (file, idx) => {
       const dest = packSafeJoin(instanceDir, file.path);
       if (fs.existsSync(dest) && (!file.fileSize || fs.statSync(dest).size === file.fileSize)) {
         finished++;
-        send('mods', '正在下载模组 ' + finished + '/' + files.length, 32 + (finished / Math.max(files.length, 1)) * 63);
+        fileFrac[idx] = 1;
+        reportMods(true);
         return;
       }
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       let ok = false;
       for (const url of (Array.isArray(file.downloads) ? file.downloads : [])) {
-        if (!await downloadWithRetry(url, dest, 2)) continue;
+        let bad = false;
+        const done = await downloadWithRetry(url, dest, 2, (dl, total) => {
+          fileFrac[idx] = total > 0 ? dl / total : 0;
+          reportMods(false);
+        });
+        if (!done) continue;
         if (!file.hashes) { ok = true; break }
-        let valid = true;
         for (const [algo, expected] of Object.entries(file.hashes)) {
           if (algo !== 'sha1' && algo !== 'sha512') continue;
-          try { valid = (await hashFile(dest, algo)).toLowerCase() === String(expected).toLowerCase() } catch { valid = false }
+          try { bad = (await hashFile(dest, algo)).toLowerCase() !== String(expected).toLowerCase() } catch { bad = true }
           break;
         }
-        if (valid) { ok = true; break }
+        if (!bad) { ok = true; break }
         try { fs.unlinkSync(dest) } catch {}
+        log('校验失败，重试其它下载源: ' + file.path);
       }
-      if (!ok) failed.push(file.path);
+      if (!ok) {
+        failed.push(file.path);
+        log('下载失败: ' + file.path);
+      }
       finished++;
-      send('mods', '正在下载模组 ' + finished + '/' + files.length, 32 + (finished / Math.max(files.length, 1)) * 63);
+      fileFrac[idx] = 1;
+      reportMods(true);
     });
 
     // overrides 最后写入，保证整合包自带配置优先于下载内容
     send('overrides', '正在写入整合包配置...', 95);
-    extractOverrideEntries(zip, 'overrides/', instanceDir);
-    extractOverrideEntries(zip, 'client-overrides/', instanceDir);
+    const overrideTotal = await extractOverrideEntries(zip, 'overrides/', instanceDir);
+    const clientOverrideTotal = await extractOverrideEntries(zip, 'client-overrides/', instanceDir);
+    log('已写入整合包配置: overrides ' + overrideTotal + ' 个, client-overrides ' + clientOverrideTotal + ' 个');
 
     if (failed.length) {
       fs.writeFileSync(path.join(instanceDir, 'wsl-pack-failed.json'), JSON.stringify(failed, null, 2), 'utf8');

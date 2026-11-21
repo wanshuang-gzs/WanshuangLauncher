@@ -972,6 +972,7 @@ function closePackPreview() { $('packPreviewModal').classList.remove('active') }
 
 async function importModpack() {
   if (importRunning) return;
+  toast(t('packPreparing'));
   const parsed = await window.wsl.parseModpack();
   if (parsed?.canceled) return;
   if (!parsed?.success) {
