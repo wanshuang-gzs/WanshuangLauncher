@@ -28,6 +28,8 @@ const MIRRORS = [
 ];
 const MODRINTH_API = 'https://api.modrinth.com/v2';
 let mainWindow = null;
+let splashWin = null;
+let splashActive = false;
 let currentMirror = 0;
 let downloadQueue = [];
 
@@ -99,25 +101,46 @@ function createSplash() {
   Menu.setApplicationMenu(null);
   const splashPath = path.join(__dirname, 'splash', 'index.html');
   if (!fs.existsSync(splashPath)) { createWindow(); return }
-  const splashWin = new BrowserWindow({
+  const startedAt = Date.now();
+  splashActive = true;
+  splashWin = new BrowserWindow({
     width: 620, height: 340,
     frame: false, resizable: false,
     transparent: false,
+    show: false,
     backgroundColor: '#05050a',
     icon: path.join(__dirname, 'public', 'app.ico'),
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
   splashWin.loadFile(splashPath);
   splashWin.center();
+  splashWin.once('ready-to-show', () => {
+    if (splashWin && !splashWin.isDestroyed()) splashWin.show();
+  });
   splashWin.on('closed', () => {
+    splashWin = null;
     if (!mainWindow) createWindow();
   });
+  createWindow();
+  // 主窗口准备好后，至少让启动动画播 1 秒再切换，避免白屏/旧界面闪一下
+  const finish = () => {
+    const wait = Math.max(0, 1000 - (Date.now() - startedAt));
+    setTimeout(() => {
+      splashActive = false;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+      if (splashWin && !splashWin.isDestroyed()) splashWin.close();
+    }, wait);
+  };
+  if (mainWindow) {
+    if (mainWindow.webContents.isLoading()) mainWindow.once('ready-to-show', finish);
+    else finish();
+  }
+  // 兜底：8 秒后无论如何都进入主界面
   setTimeout(() => {
-    if (!splashWin.isDestroyed()) {
-      splashWin.close();
-      if (!mainWindow) createWindow();
-    }
-  }, 7000);
+    splashActive = false;
+    if (splashWin && !splashWin.isDestroyed()) splashWin.close();
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+  }, 8000);
 }
 
 function createWindow() {
@@ -126,6 +149,7 @@ function createWindow() {
     minWidth: 880, minHeight: 660,
     frame: false,
     transparent: true,
+    show: false,
     icon: path.join(__dirname, 'public', 'app.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -134,6 +158,10 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+  // 页面渲染完成后再显示，避免透明窗口先闪一下旧内容
+  mainWindow.once('ready-to-show', () => {
+    if (!splashActive && mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } });
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     if (permission === 'media' || permission === 'mediaKeySystem') callback(true);
@@ -1892,15 +1920,32 @@ async function ensureSkinService(sendLog) {
   return skinService;
 }
 
+function isValidJar(p) {
+  try {
+    if (!fs.existsSync(p) || fs.statSync(p).size < 100000) return false;
+    const fd = fs.openSync(p, 'r');
+    const head = Buffer.alloc(2);
+    fs.readSync(fd, head, 0, 2, 0);
+    fs.closeSync(fd);
+    if (head.toString('latin1') !== 'PK') return false;
+    return !!new AdmZip(p).getEntry('META-INF/MANIFEST.MF');
+  } catch { return false }
+}
+
 async function ensureAuthlibInjector(sendLog) {
   const dir = path.join(app.getPath('userData'), 'skin-agent');
   fs.mkdirSync(dir, { recursive: true });
   const dest = path.join(dir, 'authlib-injector-' + AUTHLIB_INJECTOR_VERSION + '.jar');
-  if (fs.existsSync(dest) && fs.statSync(dest).size > 100000) return dest;
-  sendLog?.('Downloading authlib-injector ' + AUTHLIB_INJECTOR_VERSION + '...');
-  const ok = await downloadWithRetry(AUTHLIB_INJECTOR_URL, dest);
-  if (!ok || !fs.existsSync(dest) || fs.statSync(dest).size < 100000) throw new Error('authlib-injector 下载失败');
-  return dest;
+  if (isValidJar(dest)) return dest;
+  try { fs.unlinkSync(dest) } catch {}
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    sendLog?.('Downloading authlib-injector ' + AUTHLIB_INJECTOR_VERSION + '... (第 ' + attempt + ' 次)');
+    const ok = await downloadWithRetry(AUTHLIB_INJECTOR_URL, dest, 2);
+    if (ok && isValidJar(dest)) return dest;
+    // 下载到的是错误页/截断文件时删掉重试，绝不能让 JVM 带上损坏的 -javaagent 启动
+    try { fs.unlinkSync(dest) } catch {}
+  }
+  throw new Error('authlib-injector 下载失败或文件损坏');
 }
 
 // ── Game Launch ──

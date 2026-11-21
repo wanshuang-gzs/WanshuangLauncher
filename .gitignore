@@ -5,7 +5,6 @@ build/
 media-session/*.exe
 patched-deps/
 splash-ui/
-splash/
 src-tauri/
 play.js
 .DS_Store
