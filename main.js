@@ -122,9 +122,9 @@ function createSplash() {
     if (!mainWindow) createWindow();
   });
   createWindow();
-  // 主窗口准备好后，至少让启动动画播 1 秒再切换，避免白屏/旧界面闪一下
+  // 启动动画本身约 6.5 秒（打字 + 7 个进度步骤 + 结尾停顿），等它播完再切换主界面
   const finish = () => {
-    const wait = Math.max(0, 1000 - (Date.now() - startedAt));
+    const wait = Math.max(0, 7000 - (Date.now() - startedAt));
     setTimeout(() => {
       splashActive = false;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
@@ -135,12 +135,12 @@ function createSplash() {
     if (mainWindow.webContents.isLoading()) mainWindow.once('ready-to-show', finish);
     else finish();
   }
-  // 兜底：8 秒后无论如何都进入主界面
+  // 兜底：12 秒后无论如何都进入主界面
   setTimeout(() => {
     splashActive = false;
     if (splashWin && !splashWin.isDestroyed()) splashWin.close();
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
-  }, 8000);
+  }, 12000);
 }
 
 function createWindow() {
