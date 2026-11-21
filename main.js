@@ -657,7 +657,16 @@ async function downloadWithRetry(url, dest, retries = 3, onProgress) {
           res.on('error', (e) => { try { file.destroy() } catch {}; settle(e) });
           res.pipe(file);
         });
-        file.on('finish', () => { try { file.close() } catch {}; settle() });
+        file.on('finish', () => {
+          try { file.close() } catch {}
+          // 服务端提前断开时 length 对不上，删掉半截文件让上层重试，避免留下损坏的 jar
+          if (total > 0 && dl < total) {
+            try { fs.unlinkSync(dest) } catch {}
+            settle(new Error('下载不完整: ' + dl + '/' + total));
+            return;
+          }
+          settle();
+        });
         file.on('error', (e) => { try { file.destroy() } catch {}; settle(e) });
         req.on('error', (e) => settle(e));
         req.on('abort', () => settle(new Error('下载已中止')));
@@ -2243,6 +2252,23 @@ ipcMain.handle('mc:launch', async (_, config) => {
         sendLog('Missing Java ' + requiredMajor + ' required by this version');
         return { success: false, needJava: requiredMajor, error: '此版本需要 Java ' + requiredMajor + '，当前未安装，请先下载' };
       }
+    } else if (requiredMajor && configuredMajor !== requiredMajor) {
+      // 版本声明的 Java 与当前选择不一致（如 1.20.1 需要 17 却用了 26），优先切换到本地匹配版本
+      const match = await chooseJavaForMajor(requiredMajor);
+      if (match && match.major === requiredMajor) {
+        java = match.path;
+        sendLog('此版本需要 Java ' + requiredMajor + '（当前 Java ' + configuredMajor + '），已切换: ' + java);
+      } else {
+        sendLog('未找到 Java ' + requiredMajor + '，正在自动下载...');
+        const installed = await installJavaRuntime({ major: requiredMajor, exact: true }, sendLog,
+          (pct, speed, name) => mainWindow?.webContents.send('mc:javaDlProgress', { pct, speed, filename: name }));
+        if (installed?.success && installed.path) {
+          java = installed.path;
+          sendLog('已安装 Java ' + installed.major + ': ' + java);
+        } else {
+          sendLog('警告：此版本需要 Java ' + requiredMajor + '，当前为 Java ' + configuredMajor + '，可能出现兼容问题');
+        }
+      }
     } else if (!configuredMajor) {
       const best = await chooseJava(baseGameVersionOf(version));
       if (best?.path) java = best.path;
@@ -2319,16 +2345,15 @@ async function findTunaJavaZip(major, arch) {
   } catch { return null }
 }
 
-ipcMain.handle('mc:downloadJava', async (_, opts) => {
-  const sendLog = (msg) => mainWindow?.webContents.send('mc:log', msg);
-  const sendProgress = (pct, speed, filename) => mainWindow?.webContents.send('mc:javaDlProgress', { pct, speed, filename });
+async function installJavaRuntime(opts, sendLog, sendProgress) {
   const mcVersion = typeof opts === 'string' ? opts : opts?.mcVersion;
+  const exactOnly = !!(opts && typeof opts === 'object' && opts.exact);
   const requestedMajor = (opts && typeof opts === 'object' && opts.major) ? Number(opts.major) : 0;
   const major = requestedMajor || requiredJavaMajor(mcVersion) || 17;
   try {
     // 已有可用的 Java 时直接复用
     const existing = await chooseJavaForMajor(major);
-    const reusable = existing && (major === 8 ? existing.major === 8 : true);
+    const reusable = existing && (exactOnly ? existing.major === major : (major === 8 ? existing.major === 8 : true));
     if (reusable) {
       sendLog('Reuse existing Java ' + existing.major + ': ' + existing.path);
       return { success: true, path: existing.path, major: existing.major, reused: true };
@@ -2395,6 +2420,12 @@ ipcMain.handle('mc:downloadJava', async (_, opts) => {
     sendLog('Java download error: ' + e.message);
     return { success: false, error: e.message };
   }
+}
+
+ipcMain.handle('mc:downloadJava', async (_, opts) => {
+  const sendLog = (msg) => mainWindow?.webContents.send('mc:log', msg);
+  const sendProgress = (pct, speed, filename) => mainWindow?.webContents.send('mc:javaDlProgress', { pct, speed, filename });
+  return installJavaRuntime(opts, sendLog, sendProgress);
 });
 
 // ── Speed Test ──
